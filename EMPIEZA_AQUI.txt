@@ -1,20 +1,31 @@
-ORGANIZACIÓN CALDERÓN · PRUEBAS
+ORGANIZACIÓN CALDERÓN · ACTUALIZACIÓN
 
-1. Descomprime este ZIP.
-2. Crea un repositorio nuevo en GitHub.
-3. Sube TODOS los archivos y carpetas descomprimidos, no el ZIP.
-   app.py debe quedar en la raíz junto a backend.py, storage.py,
-   printing.py, ui.html, ui.css, ui.js y requirements.txt.
-4. En share.streamlit.io elige Create app, tu repositorio, rama main,
-   archivo app.py y Python 3.12.
-5. Deja Secrets vacío y pulsa Deploy.
-6. La portada debe abrir con el aviso MODO PRUEBAS.
+1. Descarga un respaldo JSON desde tu app antes de actualizar.
+2. Descomprime este ZIP.
+3. Abre tu repositorio control-casinov2 en GitHub.
+4. Add file → Upload files: sube TODOS los archivos y carpetas
+   descomprimidos para reemplazar los anteriores. No subas el ZIP.
+5. Confirma con Commit changes. app.py queda en la raíz.
+6. Abre tu app de Streamlit. Si muestra el diseño anterior, reiníciala
+   y vuelve a abrirla. Conserva tus Secrets existentes sin publicarlos.
 
-YA INCLUYE 40 EMPLEADOS Y EVENTOS FICTICIOS PARA PROBAR.
+NOVEDADES
+- Seis horas libres de limpieza entre el fin y el inicio de eventos
+  en el mismo salón, incluso cuando cambia el día.
+- Contrato PDF desde Evento; se quitó la pestaña Personal de la ficha.
+- Sobres automáticos de semana actual y asignaciones de próxima semana.
+- Edición y eliminación del personal con conservación de su historial.
 
-No necesitas instalar Python ni configurar Supabase para esa prueba.
-Los datos de pruebas viven sólo en la sesión de Streamlit.
-Descarga un respaldo JSON antes de cerrar si quieres conservarlos.
+PRIMER USO DE SOBRES
+En Equipo necesario para la próxima semana define personas por rol y
+paga del turno de cada evento. Guarda y el acomodo se hace solo.
+Confirma los eventos realizados para sumar sólo trabajo ya efectuado.
+El monto del sobre no incluye trabajo de la próxima semana.
+Actualiza el sobre antes de entregarlo al terminar el último turno.
 
-README.md contiene el recorrido de prueba y cómo activar después
-el modo compartido con contraseñas y base PostgreSQL.
+El contrato es un borrador para revisión y firma. Completa los datos
+pendientes y revisa su contenido y registro antes de usarlo con clientes.
+
+Sin Secrets la app abre en MODO PRUEBAS con datos ficticios de sesión.
+Con Secrets conserva la configuración de tu base compartida.
+README.md explica los recorridos de prueba y el almacenamiento.

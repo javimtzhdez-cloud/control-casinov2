@@ -84,7 +84,8 @@ def validate(raw, now=None):
         if not isinstance(p,dict): raise ValueError('Personal inválido.')
         name=text(p.get('name'),100)
         if not name or p.get('role') not in ROLES or p.get('casino') not in CASINOS: raise ValueError('Nombre, rol o casino de personal inválido.')
-        out['personnel'].append({'id':take_id(p),'name':name,'role':p['role'],'casino':p['casino']})
+        if not isinstance(p.get('active',True),bool): raise ValueError('Estatus de personal inválido.')
+        out['personnel'].append({'id':take_id(p),'name':name,'role':p['role'],'casino':p['casino'],'active':p.get('active',True)})
     people={p['id']:p for p in out['personnel']}
     for e in raw['events']:
         if not isinstance(e,dict): raise ValueError('Evento inválido.')
@@ -103,7 +104,7 @@ def validate(raw, now=None):
                 val=text(v,120)
                 if val and val not in FIELDS[k]: raise ValueError('Opción no reconocida: '+k)
                 d[k]=val
-            elif k in ['personas','precioPersona','titulo','contratante','fecha','inicio','fin','totalCalculado','otros','mantel','caminos','banda','servilletas','sugerencias']:
+            elif k in ['personas','precioPersona','titulo','contratante','fecha','inicio','fin','totalCalculado','otros','mantel','caminos','banda','servilletas','sugerencias','proveedor','domicilioProveedor','contactoProveedor','domicilioCliente','contactoCliente','domicilioSalon','condiciones']:
                 d[k]=text(str(v),1500)
         if d.get('personas'): integer(d['personas'],1,10000)
         if d.get('precioPersona') not in [None,'']: cents(d['precioPersona'])
@@ -122,14 +123,23 @@ def validate(raw, now=None):
         completed=e.get('completed',False)
         if not isinstance(completed,bool): raise ValueError('Estatus de evento inválido.')
         if completed and datetime.fromisoformat(end_day+'T'+end_time)>clock: raise ValueError('No puedes confirmar un evento futuro como realizado.')
+        plan=e.get('staffing',[])
+        if not isinstance(plan,list) or len(plan)>len(ROLES): raise ValueError('Plan de personal inválido.')
+        staffing=[];roles=set()
+        for need in plan:
+            role=need.get('role')
+            if role not in ROLES or role in roles: raise ValueError('Rol duplicado o inválido en el plan.')
+            roles.add(role);staffing.append({'role':role,'count':integer(need.get('count'),0,100),'payCents':integer(need.get('payCents'),0)})
         out['events'].append({'id':eid,'casinoId':casino,'name':name,'type':text(e.get('type','Evento'),80),
             'startDate':day,'startTime':start,'endDate':end_day,'endTime':end_time,'details':d,
-            'totalCents':total,'payments':payments,'completed':completed})
+            'totalCents':total,'payments':payments,'completed':completed,'staffing':staffing})
     events={e['id']:e for e in out['events']}
     for cid in range(1,5):
         ordered=sorted([e for e in out['events'] if e['casinoId']==cid],key=lambda e:e['startDate']+'T'+e['startTime'])
         for a,b in zip(ordered,ordered[1:]):
-            if a['endDate']+'T'+a['endTime']>b['startDate']+'T'+b['startTime']: raise ValueError('Dos eventos se cruzan en el mismo casino.')
+            end=datetime.fromisoformat(a['endDate']+'T'+a['endTime'])
+            start=datetime.fromisoformat(b['startDate']+'T'+b['startTime'])
+            if start<end+timedelta(hours=6): raise ValueError('Deja al menos 6 horas entre el fin de un evento y el inicio del siguiente en el mismo casino.')
     assigned=set()
     for a in raw['assignments']:
         aid=take_id(a);pid=identifier(a.get('personId'));eid=identifier(a.get('eventId'))
@@ -137,7 +147,9 @@ def validate(raw, now=None):
         key=(pid,events[eid]['startDate'])
         if key in assigned: raise ValueError('Una persona no puede trabajar en dos eventos el mismo día.')
         assigned.add(key)
-        out['assignments'].append({'id':aid,'personId':pid,'eventId':eid,'payCents':integer(a.get('payCents'),0)})
+        role=a.get('role',people[pid]['role'])
+        if role not in ROLES: raise ValueError('Rol de turno inválido.')
+        out['assignments'].append({'id':aid,'personId':pid,'eventId':eid,'payCents':integer(a.get('payCents'),0),'role':role})
     for pid in people:
         shifts=sorted([events[a['eventId']] for a in out['assignments'] if a['personId']==pid],key=lambda e:e['startDate']+'T'+e['startTime'])
         for first,second in zip(shifts,shifts[1:]):
@@ -163,25 +175,63 @@ def assign_auto(snapshot,event_id,role,count,pay):
         if event['casinoId']==3:
             return (person['casino']=='Anakai',sum(e['casinoId']==3 for e in history),len(history),person['name'].casefold())
         return (person['casino']!=CASINOS[event['casinoId']-1],len(history),person['name'].casefold())
-    available=sorted([p for p in data['personnel'] if p['role']==role and str(p['id']) not in busy],key=rank)
+    begin=datetime.fromisoformat(event['startDate']+'T'+event['startTime']);end=datetime.fromisoformat(event['endDate']+'T'+event['endTime'])
+    for a in data['assignments']:
+        shift=event_map[str(a['eventId'])]
+        if begin<datetime.fromisoformat(shift['endDate']+'T'+shift['endTime']) and end>datetime.fromisoformat(shift['startDate']+'T'+shift['startTime']): busy.add(str(a['personId']))
+    available=sorted([p for p in data['personnel'] if p.get('active',True) and p['role']==role and str(p['id']) not in busy],key=rank)
     if len(available)<count: raise ValueError(f'Faltan {count-len(available)} personas disponibles para {role}. No se asignó nadie.')
-    for p in available[:count]: data['assignments'].append({'id':uid(),'personId':str(p['id']),'eventId':str(event_id),'payCents':pay})
+    for p in available[:count]: data['assignments'].append({'id':uid(),'personId':str(p['id']),'eventId':str(event_id),'payCents':pay,'role':role})
     return validate(data)
 
-def envelopes(data,friday):
-    friday=date.fromisoformat(friday)
-    if friday.weekday()!=4: raise ValueError('Selecciona un viernes de entrega.')
+def week_window(reference=None):
+    reference=date.fromisoformat(reference) if isinstance(reference,str) else reference or today()
+    monday=reference-timedelta(days=reference.weekday())
+    return monday,monday+timedelta(days=7),monday+timedelta(days=14)
+
+def prepare_week(snapshot,reference=None):
+    """Completa planes de la próxima semana sin duplicar; todo o ningún cambio."""
+    data=deepcopy(snapshot);_,start,end=week_window(reference)
+    events=sorted([e for e in data['events'] if str(start)<=e['startDate']<str(end) and not e['completed']],key=lambda e:(e['startDate'],e['startTime'],e['casinoId']))
+    for event in events:
+        assigned=[a for a in data['assignments'] if str(a['eventId'])==str(event['id'])]
+        people={str(p['id']):p for p in data['personnel']}
+        for need in event.get('staffing',[]):
+            matching=[a for a in data['assignments'] if str(a['eventId'])==str(event['id']) and a.get('role',people[str(a['personId'])]['role'])==need['role']]
+            def paid(a): return sum(p['amount'] for p in data['staffPayments'] if str(p['assignmentId'])==str(a['id']))
+            excess=len(matching)-need['count']
+            if excess>0:
+                removable=[a for a in reversed(matching) if not paid(a)]
+                if len(removable)<excess: raise ValueError(f"{event['name']}: hay turnos con anticipos; no se pueden quitar. No se guardó ningún cambio semanal.")
+                remove={a['id'] for a in removable[:excess]}
+                data['assignments']=[a for a in data['assignments'] if a['id'] not in remove]
+                matching=[a for a in matching if a['id'] not in remove]
+            for assignment in matching:
+                if need['payCents']<paid(assignment): raise ValueError('La nueva paga sería menor que los anticipos entregados. No se guardó ningún cambio semanal.')
+                assignment['payCents']=need['payCents']
+            missing=need['count']-len(matching)
+            if missing>0:
+                try: data=assign_auto(data,event['id'],need['role'],missing,need['payCents'])
+                except ValueError as error: raise ValueError(f"{event['name']} ({event['startDate']}): {error} No se guardó ningún cambio semanal.") from error
+    return validate(data)
+
+def envelopes(data,reference=None):
+    reference=date.fromisoformat(reference) if isinstance(reference,str) else reference or today()
+    start,next_start,next_end=week_window(reference)
     events={str(e['id']):e for e in data['events']};result=[]
     for person in sorted(data['personnel'],key=lambda p:(CASINOS.index(p['casino']),p['name'].casefold())):
-        jobs=[];upcoming=[]
+        jobs=[];upcoming=[];this_week=[]
         for a in data['assignments']:
             if str(a['personId'])!=str(person['id']): continue
             e=events[str(a['eventId'])]
-            paid=sum(p['amount'] for p in data['staffPayments'] if str(p['assignmentId'])==str(a['id']) and p['date']<=str(friday))
-            if e['completed'] and e['startDate']<str(friday) and a['payCents']>paid: jobs.append({'assignment':a,'event':e,'balance':a['payCents']-paid})
-            if not e['completed'] and e['startDate']>=str(friday): upcoming.append(e)
+            paid=sum(p['amount'] for p in data['staffPayments'] if str(p['assignmentId'])==str(a['id']) and p['date']<=str(reference))
+            if str(start)<=e['startDate']<str(next_start):
+                this_week.append(e)
+                if e['completed'] and a['payCents']>paid: jobs.append({'assignment':a,'event':e,'balance':a['payCents']-paid})
+            if not e['completed'] and str(next_start)<=e['startDate']<str(next_end): upcoming.append(e)
         upcoming.sort(key=lambda e:e['startDate']+'T'+e['startTime'])
-        result.append({'person':person,'amount':sum(j['balance'] for j in jobs),'jobs':jobs,'next':upcoming[0] if upcoming else None})
+        if person.get('active',True) or jobs or upcoming:
+            result.append({'person':person,'amount':sum(j['balance'] for j in jobs),'jobs':jobs,'next':upcoming[0] if upcoming else None,'upcoming':upcoming,'delivery':max((e['endDate'] for e in this_week),default=None)})
     return result
 
 def demo_data(now=None):
@@ -195,7 +245,7 @@ def demo_data(now=None):
             end_day,end_time=schedule(str(when),'20:00')
             details={'personas':'100','precioPersona':'250.00','carne':'Lomo natural','salsa':'Salsa chipotle','espagueti':'Blanco','guarnicion':'Puré de papa','combinar':False,'extraGuarnicion':False}
             eid=uid()
-            data['events'].append({'id':eid,'casinoId':cid,'name':'Evento de prueba · '+CASINOS[cid-1], 'type':'Boda', 'startDate':str(when),'startTime':'20:00','endDate':end_day,'endTime':end_time,'details':details,'payments':[],'completed':False})
+            data['events'].append({'id':eid,'casinoId':cid,'name':'Evento de prueba · '+CASINOS[cid-1], 'type':'Boda', 'startDate':str(when),'startTime':'20:00','endDate':end_day,'endTime':end_time,'details':details,'payments':[],'completed':False,'staffing':[{'role':r,'count':1,'payCents':50000} for r in ROLES]})
             # Selección determinista y sin dobles turnos para esta fecha.
             for role in ROLES:
                 busy={a['personId'] for a in data['assignments'] if next(e for e in data['events'] if e['id']==a['eventId'])['startDate']==str(when)}

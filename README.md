@@ -2,7 +2,15 @@
 
 Diseño aprobado con logo, cabecera y cuatro secciones: Verificar disponibilidad, Lista de eventos, Personal y Sobres. Casinos: **Esmeralda, Sophia, Anakai y Regina**. Python 3.12 y Streamlit 1.67.0, con interfaz HTML/CSS/JavaScript conectada al servidor mediante Components v2.
 
-**El código está preparado para subirlo; esta entrega no está publicada en tu cuenta.**
+**Esta actualización incluye las cuatro mejoras solicitadas. No se ha publicado en tu cuenta.**
+
+## Actualizar tu repositorio actual
+
+1. Antes de reiniciar, descarga tu respaldo JSON en **Respaldo y pruebas**. Una sesión de pruebas puede perderse al reiniciar.
+2. Descomprime el ZIP actualizado. En `control-casinov2`, usa **Add file → Upload files** y sube todos los archivos descomprimidos para reemplazar los anteriores; confirma con **Commit changes**.
+3. Conserva `app.py` en la raíz. No cambies ni publiques tus Secrets. Streamlit tomará el cambio del repositorio; si sigue apareciendo la versión anterior, reinicia la app y vuelve a abrirla.
+4. Los datos de PostgreSQL no se vacían con esta actualización. Los respaldos Calderón 2 siguen siendo compatibles; el plan semanal se configura en Sobres.
+5. La nueva regla de limpieza también se aplica al guardar fichas existentes: corrige horarios antiguos que dejen menos de seis horas libres.
 
 ## Publicar y probar, sin instalar nada en Windows
 
@@ -35,6 +43,8 @@ En los guardados debe aparecer **Guardado** en la cabecera. Si aparece un confli
 - Entra a **Personal → Agregar personal**.
 - Escribe nombre, uno de los ocho roles y casino habitual.
 - Guarda y comprueba que aparece en el directorio y que la cabecera confirma el guardado.
+- Cada fila tiene **Editar** para cambiar nombre, rol y casino, y **Eliminar**.
+- Si hay historial, Eliminar da de baja a la persona y conserva turnos y pagos. Libera sus turnos futuros sin anticipos; los turnos con dinero registrado se conservan. Una persona dada de baja no recibe nuevas asignaciones automáticas.
 - Los roles son Mesero, Maestro de ceremonias, DJ, Cocina, Baños, Poli, Puerta y Barra.
 
 ### 2. Disponibilidad y horarios
@@ -44,7 +54,7 @@ En los guardados debe aparecer **Guardado** en la cabecera. Si aparece un confli
 - Selecciona un día libre y pulsa **Agendar este día**.
 - Elige nombre e inicio. El fin se calcula **cinco horas después**.
 - El inicio más tarde permitido es **10:00 p. m.**, con fin **3:00 a. m. del día siguiente**.
-- Prueba un inicio de 10:01 p. m.: debe rechazarlo. También rechaza dos eventos con horarios cruzados en el mismo casino.
+- Prueba un inicio de 10:01 p. m.: debe rechazarlo. Exige **seis horas libres desde el fin de un evento hasta el inicio del siguiente** en ese salón, incluso al cambiar de fecha. Por ejemplo, si acaba a las 3:00 a. m., el siguiente puede empezar desde las 9:00 a. m.; a las 8:59 a. m. se rechaza.
 
 ### 3. Ficha y costos
 
@@ -66,26 +76,31 @@ En los guardados debe aparecer **Guardado** en la cabecera. Si aparece un confli
 - Comprueba que el historial y el saldo cambian después de guardar.
 - La aplicación **registra** el pago que tú captures; no procesa tarjetas ni mueve dinero por bancos.
 
-### 5. Asignaciones y anticipos al personal
+### 5. Contrato descargable
 
-- En la ficha abre la pestaña **Personal**.
-- Selecciona rol, cantidad y pago por persona/turno y pulsa **Asignar automáticamente**.
-- Esmeralda, Sophia y Regina priorizan su personal habitual. **Anakai** actúa como casino rotativo: primero toma personal de otros casinos con menos apariciones históricas ahí.
-- No asigna a la misma persona a dos eventos con la misma fecha de inicio. Si no alcanza el personal para ese rol, no se guarda una asignación parcial.
-- En el personal asignado puedes registrar un anticipo. Se descuenta posteriormente del sobre y no puede superar el pago del turno.
-- Después de la fecha del evento, pulsa **Confirmar evento realizado** para que sus turnos pendientes sean pagaderos en Sobres.
+- La ficha del evento ya no tiene pestaña Personal.
+- En **Evento**, captura contratante, tipo de evento, personas, tarifa, datos del prestador, domicilios y contactos. Guarda la ficha.
+- Registra el apartado y abonos desde Pagos. Luego, en Evento, pulsa **Descargar contrato PDF** y el enlace de descarga preparado.
+- El PDF contiene inicio y fin con sus fechas, tipo, salón, asistentes, menú, mobiliario, precio y extras, apartado, saldo, condiciones y firmas. Usa exclusivamente los datos confirmados en el servidor.
+- Es un **borrador para revisar y completar**. Marca los datos faltantes, calendario de pagos, condiciones de cancelación y datos fiscales. No presenta un registro Profeco inventado ni impone pérdida automática del apartado. Antes de usarlo con clientes deben completarse los datos y revisarse el contenido y registro aplicable.
+- En esta misma sección está **Confirmar evento realizado**, disponible cuando ha terminado. Los eventos sin confirmar no se suman a la paga trabajada.
 
-### 6. Sobres y etiquetas
+### 6. Sobres y asignación semanal automática
 
-- En **Sobres**, selecciona un **viernes de entrega**.
-- Cada fila muestra nombre, monto pendiente de turnos realizados, próximo evento asignado, fecha, inicio/fin y casino real del próximo evento.
-- El monto arrastra turnos realizados pendientes anteriores a ese viernes y descuenta los pagos al personal registrados hasta ese corte.
-- Los cobros del cliente son independientes de la nómina: un abono del cliente no se convierte en paga de un trabajador.
-- Si falta una asignación futura, aparece **Sin próximo evento asignado**.
-- Puedes registrar un pago de un turno desde la fila del trabajador. Los cortes pasados son de consulta; registra pagos desde el viernes vigente o futuro.
-- Pulsa **Preparar etiquetas PDF** y, cuando termine, **Descargar PDF preparado**.
-- El PDF es carta, **dos columnas por cinco filas**, etiquetas de 4 × 2 pulgadas. Imprime a **100 % / tamaño real**, sin ajustar a página, y prueba primero en papel normal.
-- Si el texto no cabe, hay etiquetas de continuación. Generar el PDF no marca los pagos como entregados.
+- **No hay selector de fecha.** La fecha de México determina la semana actual, de lunes a domingo, y la próxima semana completa. Puedes preparar los sobres el jueves.
+- Al entrar en Sobres se completa automáticamente la asignación de los eventos de la próxima semana, usando sus necesidades guardadas.
+- Abre **Equipo necesario para la próxima semana**. Por cada evento define cantidad de personas por rol y paga individual por turno. Guarda: se ejecutará el acomodo automáticamente. También puedes pulsar **Actualizar asignación semanal**.
+- Los eventos nuevos necesitan que definas sus cantidades; la aplicación no inventa cuántos meseros, policías o cocineros requiere un evento.
+- Esmeralda, Sophia y Regina priorizan personal habitual. Anakai prioriza trabajadores de otros salones con menos turnos históricos allí. Se evita asignar una persona dos veces el mismo día y se detectan cruces de madrugada.
+- Si falta personal, se rechaza el acomodo semanal completo sin guardar cambios parciales. Agrega personal o corrige cantidades antes de repetir.
+- Puedes corregir cantidades y paga de la próxima semana. Los turnos con anticipos no se eliminan ni pueden quedar con paga inferior a lo entregado. No se cambian los turnos de semanas anteriores.
+- Cada sobre muestra **sólo el saldo de turnos ya trabajados y confirmados de esta semana**, menos anticipos y pagos registrados. No suma salarios de la próxima semana ni turnos futuros de esta semana.
+- También muestra **todos sus eventos asignados de la próxima semana**, fecha, horario de 12 horas y salón, y la fecha de entrega al terminar su último turno de esta semana (incluye la madrugada si corresponde).
+- Si el jueves aún faltan eventos por trabajar el viernes o sábado, esos salarios todavía no se incluyen: confirma los eventos al terminar y vuelve a descargar las etiquetas antes de entregar el sobre.
+- Las deudas anteriores no se pierden: se consultan y pagan en **Saldos anteriores pendientes**, separadas del total semanal.
+- Puedes registrar pagos parciales o liquidar cada turno desde el trabajador; nunca se permite pagar de más. Los cobros del cliente y los pagos al personal son independientes.
+- Pulsa **Preparar etiquetas PDF** y **Descargar PDF preparado**. Descargar o imprimir no registra entrega de dinero.
+- Etiquetas carta, dos columnas por cinco filas, 4 × 2 pulgadas. Imprime al 100 % / tamaño real; prueba la alineación en papel normal. El texto largo produce etiquetas de continuación.
 
 ### 7. Borrar un error de captura
 
@@ -131,7 +146,7 @@ Sin Secrets entra en pruebas. Para usar el modo compartido localmente, crea `.st
 - `app.py`: arranque, modos, acceso, acciones del servidor y respaldos.
 - `backend.py`: reglas de costos, eventos, disponibilidad, asignaciones y sobres.
 - `storage.py`: almacenamiento de sesión y PostgreSQL con control de revisión.
-- `printing.py`: etiquetas PDF con ReportLab.
+- `printing.py`: contratos y etiquetas PDF con ReportLab y fuentes incorporadas.
 - `ui.html`, `ui.css`, `ui.js`: diseño completo, logo integrado e interacción conectada al servidor.
 - `tests/`, `package.json`, `.github/workflows/tests.yml`: comprobaciones de desarrollo.
 
@@ -153,7 +168,7 @@ npm test
 
 No necesitas Node.js para ejecutar la aplicación en Streamlit: sólo para esa prueba de desarrollo. El workflow incluido ejecuta ambas verificaciones en GitHub Actions. Las pruebas no necesitan ni modifican tu base real de Supabase.
 
-Se verificaron **21 pruebas de Python**, incluido el arranque de Streamlit y la recepción/validación de cambios enviados por el componente. Además se probó el recorrido de interfaz → reglas Python → respuesta: alta, precio, extras, cobro, asignación, pago de nómina, PDF y rechazo de conflictos. Las pruebas de interfaz usan DOM simulado; no sustituyen revisar el enlace desplegado en tu teléfono.
+Se verificaron **35 pruebas de Python**, incluido el arranque de Streamlit y la recepción/validación de cambios enviados por el componente. Además se probó el recorrido de interfaz → reglas Python → respuesta: alta, edición y baja, precio, extras, cobro, contrato, asignación semanal, pago de nómina, etiquetas y rechazo de conflictos. Las pruebas de interfaz usan DOM simulado; no sustituyen revisar el enlace desplegado en tu teléfono.
 
 No se ejecutó una conexión a tu proyecto Supabase ni se verificó su estado, permisos o límites. Al activar compartido, prueba con un registro ficticio y recarga desde otro navegador para comprobar esa conexión.
 
@@ -164,3 +179,6 @@ No se ejecutó una conexión a tu proyecto Supabase ni se verificó su estado, p
 - Components v2: https://docs.streamlit.io/develop/concepts/custom-components/components-v2/examples
 - Persistencia de archivos locales: https://docs.streamlit.io/develop/concepts/connections/connecting-to-data
 - Supabase PostgreSQL: https://supabase.com/docs/guides/database/connecting-to-postgres
+
+- Información contractual de Profeco: https://www.gob.mx/profeco/articulos/tuviste-que-cancelar-un-banquete
+- Registro obligatorio de contratos de adhesión: https://rpca.profeco.gob.mx/informacion.html

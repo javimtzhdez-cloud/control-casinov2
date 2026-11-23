@@ -11,7 +11,7 @@ const root=parentElement.querySelector('#calderon-design');
   function snapshot(){return {version:2,personnel:JSON.parse(JSON.stringify(personnel)),events:states.flatMap(s=>s.events.map(e=>({...e,casinoId:s.id}))),assignments:JSON.parse(JSON.stringify(assignments)),staffPayments:JSON.parse(JSON.stringify(staffPayments))};}
   function command(type,extra={}){
     if(bridge.pending)return;
-    const id=nextKey();bridge.pending=id;status('Guardando…');root.setAttribute('aria-busy','true');
+    const id=nextKey();bridge.pending=id;bridge.pendingType=type;bridge.pendingLabel=extra.label;status('Guardando…');root.setAttribute('aria-busy','true');
     root.querySelectorAll('main, .oc-header').forEach(el=>{el.inert=true;});
     bridge.emit('command',{id,revision:bridge.revision,type,...extra});
   }
@@ -38,14 +38,18 @@ const root=parentElement.querySelector('#calderon-design');
     if(!currentEvent&&!root.querySelector('[data-oc-panel=configurar]').hidden)openPage('eventos');
     if(currentEvent&&root.querySelector('[data-oc-panel=configurar]').hidden===false){
       if(!reply.ok||reply.refresh)openEvent(currentEventState,currentEvent);
-      else if(root.querySelector('#oc-staff-assigned'))renderStaff();
+      else renderStaff();
     }
     if(!root.querySelector('[data-oc-panel=pagos]').hidden)renderEnvelopes();
     root.querySelector('#oc-ready-pdf').hidden=true;
+    root.querySelector('#oc-ready-contract')?.setAttribute('hidden','');
     if(reply.pdf){
       const a=root.querySelector('#oc-ready-pdf');a.href='data:application/pdf;base64,'+reply.pdf;a.download=reply.filename;a.hidden=false;
     }
+    if(reply.contractPdf){const a=root.querySelector('#oc-ready-contract');if(a){a.href='data:application/pdf;base64,'+reply.contractPdf;a.download=reply.filename;a.hidden=false;}}
+    const prepareAgain=reply.ok&&bridge.pendingType==='save'&&bridge.pendingLabel==='Guardar necesidades de personal';
     status(reply.ok?(reply.message||'Guardado'):reply.message,true===!reply.ok);
+    if(prepareAgain)command('prepare_week');
   }
   root.__calderon={receive};
 
@@ -57,7 +61,7 @@ const root=parentElement.querySelector('#calderon-design');
     if(root.querySelector('.oc-day-popover'))hideDayPopover();
     panels.forEach(panel=>{panel.hidden=panel.dataset.ocPanel!==page;});
     const activeRoute=page==='configurar'?'eventos':page;
-    if(page==='pagos')renderEnvelopes();
+    if(page==='pagos'){renderEnvelopes();command('prepare_week');}
     if(page==='disponibilidad'||page==='eventos'){
       calendarMode=page;
       const mount=root.querySelector(page==='eventos'?'#oc-events-calendar-mount':'#oc-availability-calendar-mount');
@@ -250,7 +254,7 @@ const root=parentElement.querySelector('#calderon-design');
       let message='';
       if(!name)message='Escribe el nombre del evento.';
       else if(end>nextDay(date)+'T03:00')message='El evento debe terminar a más tardar a las 3:00 a. m.';
-      else if(state.events.some(e=>start<e.endDate+'T'+e.endTime&&end>e.startDate+'T'+e.startTime))message='Este horario se cruza con un evento. Elige otro horario.';
+      else if(state.events.some(e=>spacingConflict(e,start,end)))message='Debe haber al menos 6 horas libres entre el fin de un evento y el inicio del siguiente.';
       if(message){error.textContent=message;error.hidden=false;return;}
       state.events.push({id:nextKey(),name,type:'Evento',startDate:date,startTime,endDate,endTime});
       renderMonth(state);showDay(state,date);commit('Registrar evento');
@@ -334,8 +338,8 @@ const root=parentElement.querySelector('#calderon-design');
     content.innerHTML='<form id="oc-contract" novalidate>'+ 
       '<div data-config-pane="datos"><div class="oc-config-grid">'+
         inputField('Título del evento','titulo','text',event.name.replace(/\s*· ejemplo$/,''),'maxlength="120" required')+
-        inputField('Nombre del contratante','contratante','text',d.contratante,'maxlength="120"')+
-        inputField('Fecha del evento','fecha','date',event.startDate,'required')+
+        inputField('Tipo de evento','tipoEvento','text',event.type,'maxlength="80" required')+inputField('Nombre del contratante','contratante','text',d.contratante,'maxlength="120"')+
+        inputField('Domicilio del contratante','domicilioCliente','text',d.domicilioCliente)+inputField('Contacto del contratante','contactoCliente','text',d.contactoCliente)+inputField('Prestador: nombre o razón social','proveedor','text',d.proveedor)+inputField('Domicilio del prestador','domicilioProveedor','text',d.domicilioProveedor)+inputField('Contacto para aclaraciones','contactoProveedor','text',d.contactoProveedor)+inputField('Domicilio del salón','domicilioSalon','text',d.domicilioSalon)+inputField('Condiciones adicionales acordadas','condiciones','text',d.condiciones,'maxlength="1500"')+inputField('Fecha del evento','fecha','date',event.startDate,'required')+
         inputField('Número de personas','personas','number',d.personas,'min="1" max="10000" step="1" required')+
         inputField('Precio por persona (MXN)','precioPersona','number',d.precioPersona,'min="0" step="0.01" required')+
         inputField('Total acordado del evento · automático','totalCalculado','number',(event.totalCents/100).toFixed(2),'readonly id="oc-config-total"')+
@@ -434,12 +438,12 @@ const root=parentElement.querySelector('#calderon-design');
         if(parts[0]<1900||parts[0]>9999||isoDate(parts[0],parts[1]-1,parts[2])!==draft.fecha)throw new Error('La fecha no es válida.');
         const schedule=eventSchedule(draft.inicio);const endDate=schedule.nextDay?nextDay(draft.fecha):draft.fecha;
         const start=draft.fecha+'T'+draft.inicio;const end=endDate+'T'+schedule.endTime;
-        if(currentEventState.events.some(e=>e!==event&&start<e.endDate+'T'+e.endTime&&end>e.startDate+'T'+e.startTime))throw new Error('El horario coincide con otro evento de este casino.');
+        if(currentEventState.events.some(e=>e!==event&&spacingConflict(e,start,end)))throw new Error('Debe haber al menos 6 horas para limpieza y montaje entre eventos de este casino.');
         if(draft.combinar&&(!draft.carne||!draft.carne2||!draft.salsa||!draft.salsa2||count<200))throw new Error('Para combinar platillos, registra al menos 200 personas y elige las dos carnes y salsas.');
         if(draft.extraGuarnicion&&!draft.guarnicion2)throw new Error('Selecciona la guarnición extra.');
         const price=pricingFor(pricingData());
         if(price.total<paidTotal(event))throw new Error('El total no puede ser menor que lo ya pagado.');
-        event.name=String(draft.titulo).trim();event.startDate=draft.fecha;event.startTime=draft.inicio;event.endDate=endDate;event.endTime=schedule.endTime;
+        event.type=String(draft.tipoEvento).trim();event.name=String(draft.titulo).trim();event.startDate=draft.fecha;event.startTime=draft.inicio;event.endDate=endDate;event.endTime=schedule.endTime;
         draft.combinar=!!get('combinar').checked;draft.extraGuarnicion=!!get('extraGuarnicion').checked;
         if(!draft.combinar){draft.carne2='';draft.salsa2='';}
         if(!draft.extraGuarnicion)draft.guarnicion2='';
@@ -500,143 +504,111 @@ const root=parentElement.querySelector('#calderon-design');
 
   const personnel=[];
   const personnelRoles=['Mesero','Maestro de ceremonias','DJ','Cocina','Baños','Poli','Puerta','Barra'];
-  const personnelForm=root.querySelector('#oc-personnel-form');
-  const personnelArea=root.querySelector('#oc-personnel-form-area');
-  const addPersonnel=root.querySelector('#oc-add-personnel');
-  const personnelError=root.querySelector('#oc-personnel-error');
+  const personnelForm=root.querySelector('#oc-personnel-form'),personnelArea=root.querySelector('#oc-personnel-form-area'),addPersonnel=root.querySelector('#oc-add-personnel'),personnelError=root.querySelector('#oc-personnel-error');
+  let editingPerson=null;
   personnelRoles.forEach(role=>{const option=document.createElement('option');option.value=role;option.textContent=role;personnelForm.elements.namedItem('rol').append(option);});
   states.forEach(state=>{const option=document.createElement('option');option.value=state.name;option.textContent=state.name;personnelForm.elements.namedItem('casino').append(option);});
-  function togglePersonnelForm(show){
-    personnelArea.hidden=!show;addPersonnel.setAttribute('aria-expanded',String(show));
-    personnelError.hidden=true;
-    if(show){root.querySelector('#oc-personnel-status').textContent='';root.querySelector('#oc-person-name').focus();}
-    else{personnelForm.reset();addPersonnel.focus();}
-  }
-  addPersonnel.addEventListener('click',()=>togglePersonnelForm(personnelArea.hidden));
+  function togglePersonnelForm(show){personnelArea.hidden=!show;addPersonnel.setAttribute('aria-expanded',String(show));personnelError.hidden=true;if(show){root.querySelector('#oc-personnel-status').textContent='';root.querySelector('#oc-person-name').focus();}else{editingPerson=null;personnelForm.reset();addPersonnel.focus();}}
+  addPersonnel.addEventListener('click',()=>{editingPerson=null;personnelForm.reset();personnelArea.querySelector('h3').textContent='Agregar personal';togglePersonnelForm(personnelArea.hidden);});
   root.querySelector('#oc-cancel-personnel').addEventListener('click',()=>togglePersonnelForm(false));
   function renderPersonnel(){
-    const rows=root.querySelector('#oc-personnel-rows');rows.replaceChildren();
-    [...personnel].sort((a,b)=>a.name.localeCompare(b.name,'es')).forEach(person=>{
-      const tr=document.createElement('tr');
-      [[person.name,'Nombre'],[person.role,'Rol'],[person.casino,'Casino habitual']].forEach(([text,label])=>{
-        const td=document.createElement('td');td.textContent=text;td.dataset.label=label;tr.append(td);
-      });rows.append(tr);
+    const rows=root.querySelector('#oc-personnel-rows');rows.replaceChildren();const active=personnel.filter(p=>p.active!==false);
+    [...active].sort((a,b)=>a.name.localeCompare(b.name,'es')).forEach(person=>{
+      const tr=document.createElement('tr');tr.dataset.personId=person.id;
+      [[person.name,'Nombre'],[person.role,'Rol'],[person.casino,'Casino habitual']].forEach(([text,label])=>{const td=document.createElement('td');td.textContent=text;td.dataset.label=label;tr.append(td);});
+      const actions=document.createElement('td');actions.dataset.label='Acciones';
+      const edit=document.createElement('button');edit.type='button';edit.className='oc-text-button';edit.textContent='Editar';edit.dataset.action='edit';edit.addEventListener('click',()=>{editingPerson=person.id;personnelArea.querySelector('h3').textContent='Editar personal';personnelForm.elements.nombre.value=person.name;personnelForm.elements.rol.value=person.role;personnelForm.elements.casino.value=person.casino;togglePersonnelForm(true);});
+      const remove=document.createElement('button');remove.type='button';remove.className='oc-text-button';remove.textContent='Eliminar';remove.dataset.action='delete';remove.addEventListener('click',()=>{
+        const linked=assignments.filter(a=>String(a.personId)===String(person.id));
+        if(!window.confirm('¿Eliminar a '+person.name+' del personal activo? Se conservarán sus turnos y pagos anteriores. Las asignaciones futuras pendientes se liberarán.'))return;
+        // Retain worked history; release future unpaid turns so weekly preparation can replace them.
+        for(let i=assignments.length-1;i>=0;i--){const a=assignments[i],event=eventById(a.eventId);if(String(a.personId)===String(person.id)&&!event.completed&&event.startDate>=bridge.today&&!staffPayments.some(p=>String(p.assignmentId)===String(a.id)))assignments.splice(i,1);}
+        const hasHistory=assignments.some(a=>String(a.personId)===String(person.id));
+        if(hasHistory)person.active=false;else personnel.splice(personnel.indexOf(person),1);
+        togglePersonnelForm(false);commit('Eliminar personal');
+      });
+      actions.append(edit,document.createTextNode(' · '),remove);tr.append(actions);rows.append(tr);
     });
-    root.querySelector('#oc-personnel-count').textContent=personnel.length+(personnel.length===1?' persona':' personas');
-    root.querySelector('#oc-personnel-empty').hidden=personnel.length>0;
-    root.querySelector('#oc-personnel-table').hidden=personnel.length===0;
+    root.querySelector('#oc-personnel-count').textContent=active.length+(active.length===1?' persona':' personas');root.querySelector('#oc-personnel-empty').hidden=active.length>0;root.querySelector('#oc-personnel-table').hidden=active.length===0;
   }
-  personnelForm.addEventListener('submit',event=>{
-    event.preventDefault();
-    const data=new FormData(personnelForm);
-    const name=String(data.get('nombre')||'').trim().replace(/\s+/g,' ');
-    const role=String(data.get('rol')||'');const casino=String(data.get('casino')||'');
-    let error='';
-    if(!name||name.length>100)error='Escribe un nombre de hasta 100 caracteres.';
-    else if(!personnelRoles.includes(role))error='Selecciona uno de los roles de la lista.';
-    else if(!states.some(state=>state.name===casino))error='Selecciona el casino habitual.';
-    else if(personnel.some(person=>person.name.toLocaleLowerCase('es')===name.toLocaleLowerCase('es')&&person.role===role&&person.casino===casino))error='Esta persona ya está registrada con ese rol y casino.';
+  personnelForm.addEventListener('submit',event=>{event.preventDefault();const data=new FormData(personnelForm);const name=String(data.get('nombre')||'').trim().replace(/\s+/g,' '),role=String(data.get('rol')||''),casino=String(data.get('casino')||'');let error='';
+    if(!name||name.length>100)error='Escribe un nombre de hasta 100 caracteres.';else if(!personnelRoles.includes(role)||!states.some(s=>s.name===casino))error='Selecciona un rol y casino válidos.';else if(personnel.some(p=>p.active!==false&&p.id!==editingPerson&&p.name.toLocaleLowerCase('es')===name.toLocaleLowerCase('es')&&p.role===role&&p.casino===casino))error='Esta persona ya está registrada.';
     if(error){personnelError.textContent=error;personnelError.hidden=false;return;}
-    personnel.push({id:nextKey(),name,role,casino});
-    renderPersonnel();togglePersonnelForm(false);commit('Agregar personal');
-    root.querySelector('#oc-personnel-status').textContent=name+' se agregó al equipo de '+casino+'.';
+    if(editingPerson){const person=personnel.find(p=>p.id===editingPerson);Object.assign(person,{name,role,casino});}else personnel.push({id:nextKey(),name,role,casino,active:true});
+    renderPersonnel();togglePersonnelForm(false);commit('Guardar personal');
   });
   renderPersonnel();
-
   function eventById(id){return states.flatMap(s=>s.events).find(e=>String(e.id)===String(id));}
   function staffPaid(id,cutoff=bridge.today){return staffPayments.filter(p=>String(p.assignmentId)===String(id)&&p.date<=cutoff).reduce((sum,p)=>sum+p.amount,0);}
-  function renderStaff(){
-    const host=root.querySelector('#oc-staff-assigned');if(!host||!currentEvent)return;
-    host.replaceChildren();
-    const rows=assignments.filter(a=>String(a.eventId)===String(currentEvent.id));
-    if(!rows.length){const p=document.createElement('p');p.className='oc-config-help';p.textContent='Aún no hay personal asignado a este evento.';host.append(p);}
-    rows.forEach(a=>{
-      const person=personnel.find(p=>String(p.id)===String(a.personId));const row=document.createElement('div');row.className='oc-payment-row';
-      row.innerHTML='<div><strong>'+safe(person.name)+'</strong><span>'+safe(person.role)+' · '+safe(person.casino)+'</span></div><span>'+currency(a.payCents)+'</span>';host.append(row);
-      const remaining=a.payCents-staffPaid(a.id);
-      if(remaining>0){const pay=document.createElement('button');pay.type='button';pay.className='oc-text-button cursor-interaction';pay.textContent=currentEvent.completed?'Registrar pago al personal':'Registrar anticipo al personal';pay.addEventListener('click',()=>showStaffPayment({jobs:[{assignment:a,event:currentEvent,balance:remaining}]},row));row.append(pay);}
-
-    });
-    const done=root.querySelector('#oc-mark-completed');done.disabled=currentEvent.completed||currentEvent.endDate>=bridge.today;
-    done.textContent=currentEvent.completed?'Evento realizado':'Confirmar evento realizado';
-  }
+  function weekDates(){const [y,m,d]=bridge.today.split('-').map(Number);const day=new Date(y,m-1,d,12);const monday=d-(day.getDay()+6)%7;return {start:isoDate(y,m-1,monday),next:isoDate(y,m-1,monday+7),end:isoDate(y,m-1,monday+14)};}
+  function spacingConflict(e,start,end){const gap=6*3600000;return new Date(start).getTime()<new Date(e.endDate+'T'+e.endTime).getTime()+gap&&new Date(end).getTime()+gap>new Date(e.startDate+'T'+e.startTime).getTime();}
+  function renderStaff(){const done=root.querySelector('#oc-mark-completed');if(!done||!currentEvent)return;done.disabled=currentEvent.completed||(currentEvent.endDate+'T'+currentEvent.endTime)>(bridge.data.now||bridge.today+'T00:00');done.textContent=currentEvent.completed?'Evento realizado':'Confirmar evento realizado';}
   function mountStaff(){
-    const tabs=root.querySelector('.oc-config-tabs');
-    if(!tabs.querySelector('[data-config-tab=equipo]')){
-      const b=document.createElement('button');b.type='button';b.dataset.configTab='equipo';b.className='cursor-interaction';b.textContent='Personal';b.setAttribute('aria-pressed','false');b.addEventListener('click',()=>setConfigTab('equipo'));tabs.insertBefore(b,tabs.querySelector('[data-config-tab=cobros]'));
-    }
-    const parent=root.querySelector('#oc-event-config-content');const section=document.createElement('div');section.dataset.configPane='equipo';section.hidden=true;
-    section.innerHTML='<p class="oc-config-help">La asignación usa el casino habitual y evita dos turnos para la misma persona en una fecha. Anakai rota al equipo con menos turnos históricos allí.</p><form id="oc-auto-staff"><div class="oc-config-grid"><label>Rol<select name="rol" required>'+personnelRoles.map(r=>'<option>'+safe(r)+'</option>').join('')+'</select></label><label>Cantidad<input type="number" name="cantidad" min="1" max="100" value="1" required></label><label>Pago por persona y turno (MXN)<input type="number" name="importe" min="0" step="0.01" value="500" required></label></div><div class="oc-config-bottom"><button type="submit" class="oc-primary oc-small-primary cursor-interaction">Asignar automáticamente</button><p id="oc-staff-error" class="oc-config-message is-error" role="alert"></p></div></form><div id="oc-staff-assigned"></div><button type="button" id="oc-mark-completed" class="oc-text-button cursor-interaction">Confirmar evento realizado</button><p class="oc-config-help">Confirma el evento después de trabajarlo para que sus turnos pendientes aparezcan en los sobres.</p>';
-    parent.append(section);
-    section.querySelector('form').addEventListener('submit',e=>{
-      e.preventDefault();const f=new FormData(e.currentTarget);const error=section.querySelector('#oc-staff-error');
-      try{if(currentEvent.completed)throw new Error('El evento ya está realizado.');const count=Number(f.get('cantidad'));if(!Number.isInteger(count)||count<1||count>100)throw new Error('Cantidad inválida.');
-        command('auto_assign',{eventId:currentEvent.id,role:f.get('rol'),count,payCents:toCents(f.get('importe'))});
-      }catch(err){error.textContent=err.message;}
-    });
-    section.querySelector('#oc-mark-completed').addEventListener('click',()=>{currentEvent.completed=true;commit('Confirmar evento realizado');});
-    renderStaff();
+    const pane=root.querySelector('[data-config-pane=datos]');
+    const box=document.createElement('div');box.className='oc-config-note';
+    box.innerHTML='<button type="button" id="oc-download-contract" class="oc-primary oc-small-primary">Descargar contrato PDF</button> <a id="oc-ready-contract" hidden class="oc-text-button">Descargar contrato preparado</a><p class="oc-config-help">El PDF usa la ficha guardada, el menú, mobiliario, total y apartado registrados. Guarda los cambios antes de descargarlo. Incluye condiciones para revisar y completar antes de firmar.</p><button type="button" id="oc-mark-completed" class="oc-text-button">Confirmar evento realizado</button><p class="oc-config-help">Confirma sólo los eventos ya trabajados para incluir su pago en los sobres de esta semana.</p>';
+    pane.append(box);box.querySelector('#oc-download-contract').addEventListener('click',()=>command('contract',{eventId:currentEvent.id}));
+    box.querySelector('#oc-mark-completed').addEventListener('click',()=>{currentEvent.completed=true;commit('Confirmar evento realizado');});renderStaff();
   }
-  function nextFriday(){const [y,m,d]=bridge.today.split('-').map(Number);const day=new Date(y,m-1,d,12);return isoDate(y,m-1,d+(5-day.getDay()+7)%7);}
-  function envelopeRows(friday){
-    return [...personnel].sort((a,b)=>a.casino.localeCompare(b.casino)||a.name.localeCompare(b.name,'es')).map(person=>{
-      const jobs=[],future=[];
+  function envelopeRows(){
+    const week=weekDates();return [...personnel].sort((a,b)=>a.casino.localeCompare(b.casino)||a.name.localeCompare(b.name,'es')).map(person=>{
+      const jobs=[],future=[],thisWeek=[];
       assignments.filter(a=>String(a.personId)===String(person.id)).forEach(a=>{
-        const event=eventById(a.eventId);const balance=a.payCents-staffPaid(a.id,friday);
-        if(event.completed&&event.startDate<friday&&balance>0)jobs.push({assignment:a,event,balance});
-        if(!event.completed&&event.startDate>=friday)future.push(event);
+        const event=eventById(a.eventId),balance=a.payCents-staffPaid(a.id);
+        if(event.startDate>=week.start&&event.startDate<week.next){thisWeek.push(event);if(event.completed&&balance>0)jobs.push({assignment:a,event,balance});}
+        if(!event.completed&&event.startDate>=week.next&&event.startDate<week.end)future.push(event);
       });
       future.sort((a,b)=>(a.startDate+'T'+a.startTime).localeCompare(b.startDate+'T'+b.startTime));
-      return {person,amount:jobs.reduce((s,j)=>s+j.balance,0),jobs,next:future[0]||null};
+      return {person,amount:jobs.reduce((s,j)=>s+j.balance,0),jobs,future,next:future[0]||null,delivery:thisWeek.map(e=>e.endDate).sort().at(-1)};
+    }).filter(e=>e.person.active!==false||e.jobs.length||e.future.length);
+  }
+  function renderWeeklyPlans(){
+    const host=root.querySelector('#oc-weekly-plans');host.replaceChildren();const week=weekDates();
+    const upcoming=states.flatMap(s=>s.events).filter(e=>e.startDate>=week.next&&e.startDate<week.end&&!e.completed).sort((a,b)=>(a.startDate+a.startTime).localeCompare(b.startDate+b.startTime));
+    if(!upcoming.length){host.textContent='No hay eventos agendados para la próxima semana.';return;}
+    const help=document.createElement('p');help.className='oc-config-help';help.textContent='Indica cuántas personas necesitas de cada rol y su paga por turno. Al entrar a Sobres se completan automáticamente los planes guardados, sin duplicar turnos. Si falta personal, se conserva todo sin cambios.';host.append(help);
+    upcoming.forEach(event=>{
+      const details=document.createElement('details');const title=document.createElement('summary');title.textContent=event.name+' · '+states[event.casinoId-1].name+' · '+dateLabel(event.startDate)+(event.staffing?.length?'':' · Falta definir equipo');details.append(title);
+      const form=document.createElement('form');form.className='oc-booking';
+      form.innerHTML=personnelRoles.map((role,i)=>{const need=event.staffing?.find(n=>n.role===role);const existing=assignments.filter(a=>String(a.eventId)===String(event.id)&&(a.role||personnel.find(p=>String(p.id)===String(a.personId))?.role)===role);return '<div class="oc-plan-row"><strong>'+safe(role)+'</strong><label>Personas<input type="number" min="0" max="100" name="count'+i+'" value="'+(need?.count??existing.length)+'" required></label><label>Pago por turno (MXN)<input type="number" min="0" step="0.01" name="pay'+i+'" value="'+((need?.payCents??existing[0]?.payCents??50000)/100).toFixed(2)+'" required></label></div>';}).join('')+'<button class="oc-primary oc-small-primary" type="submit">Guardar necesidades de este evento</button><p role="alert"></p>';
+      form.addEventListener('submit',e=>{e.preventDefault();try{const plan=personnelRoles.map((role,i)=>{const count=Number(form.elements['count'+i].value);if(!Number.isInteger(count)||count<0||count>100)throw new Error('Cantidad inválida.');return {role,count,payCents:toCents(form.elements['pay'+i].value)};});event.staffing=plan;commit('Guardar necesidades de personal');}catch(err){form.querySelector('p').textContent=err.message;}});
+      details.append(form);host.append(details);
     });
   }
   function renderEnvelopes(){
-    const friday=root.querySelector('#oc-pay-friday').value;
-    const [y,m,d]=friday.split('-').map(Number);
-    const valid=friday&&new Date(y,m-1,d,12).getDay()===5;
-    root.querySelector('#oc-payday-error').textContent=valid?'':'Selecciona un viernes de entrega.';
-    const rows=root.querySelector('#oc-envelopes-rows');rows.replaceChildren();if(!valid)return;
-    const envelopes=envelopeRows(friday);
+    const week=weekDates();root.querySelector('#oc-week-range').textContent='Pagos: '+dateLabel(week.start)+' a '+dateLabel(isoDate(Number(week.next.slice(0,4)),Number(week.next.slice(5,7))-1,Number(week.next.slice(8,10))-1))+'. Asignaciones: próxima semana, desde '+dateLabel(week.next)+'.';
+    const rows=root.querySelector('#oc-envelopes-rows');rows.replaceChildren();const envelopes=envelopeRows();
     envelopes.forEach(e=>{
       const tr=document.createElement('tr');const columns=['Nombre','Monto a pagar','Próximo evento','Horario','Casino'];
       const cells=columns.map(label=>{const td=document.createElement('td');td.dataset.label=label;tr.append(td);return td;});
-      cells[0].textContent=e.person.name;cells[1].className='oc-envelope-money';cells[1].textContent=currency(e.amount);
-      if(e.jobs.length&&friday>=bridge.today){const b=document.createElement('button');b.className='oc-text-button cursor-interaction';b.type='button';b.textContent='Registrar pago';b.addEventListener('click',()=>showStaffPayment(e,cells[1]));cells[1].append(document.createElement('br'),b);}
-      if(e.next){const b=document.createElement('button');b.className='oc-envelope-event cursor-interaction';b.type='button';b.textContent=e.next.name;b.addEventListener('click',()=>openEvent(states.find(s=>s.id===e.next.casinoId),e.next));cells[2].append(b);const day=document.createElement('span');day.className='oc-envelope-date';day.textContent=dateLabel(e.next.startDate);cells[2].append(day);cells[3].textContent=hourLabel(e.next.startTime)+' — '+hourLabel(e.next.endTime)+(e.next.endDate!==e.next.startDate?' (+1 día)':'');cells[4].textContent=states[e.next.casinoId-1].name;}
-      else{cells[2].textContent='Sin próximo evento asignado';cells[3].textContent='—';cells[4].textContent='—';}
-      rows.append(tr);
+      cells[0].textContent=e.person.name;const delivery=document.createElement('span');delivery.className='oc-envelope-date';delivery.textContent=e.delivery?'Entregar al terminar su último turno: '+dateLabel(e.delivery):'Sin turnos esta semana';cells[0].append(delivery);
+      cells[1].className='oc-envelope-money';cells[1].textContent=currency(e.amount);
+      if(e.jobs.length){const b=document.createElement('button');b.className='oc-text-button';b.type='button';b.textContent='Registrar pago';b.addEventListener('click',()=>showStaffPayment(e,cells[1]));cells[1].append(document.createElement('br'),b);}
+      e.future.forEach(n=>{const b=document.createElement('button');b.className='oc-envelope-event';b.type='button';b.textContent=n.name+' · '+dateLabel(n.startDate);b.addEventListener('click',()=>openEvent(states.find(s=>s.id===n.casinoId),n));cells[2].append(b);const t=document.createElement('div');t.textContent=hourLabel(n.startTime)+' — '+hourLabel(n.endTime)+(n.endDate!==n.startDate?' (+1 día)':'');cells[3].append(t);const casino=document.createElement('div');casino.textContent=states[n.casinoId-1].name;cells[4].append(casino);});
+      if(!e.future.length){cells[2].textContent='Sin evento asignado la próxima semana';cells[3].textContent='—';cells[4].textContent='—';}rows.append(tr);
     });
-    root.querySelector('#oc-envelopes-demo').hidden=true;
-    root.querySelector('#oc-envelopes-count').textContent=envelopes.length+' personas';root.querySelector('#oc-envelopes-total').textContent='Total a pagar: '+currency(envelopes.reduce((sum,e)=>sum+e.amount,0));
+    root.querySelector('#oc-envelopes-demo').hidden=true;root.querySelector('#oc-envelopes-count').textContent=envelopes.length+' personas';root.querySelector('#oc-envelopes-total').textContent='Total trabajado pendiente: '+currency(envelopes.reduce((sum,e)=>sum+e.amount,0));
     root.querySelector('#oc-envelopes-empty').hidden=envelopes.length>0;root.querySelector('#oc-envelopes-table').hidden=envelopes.length===0;
-    root.querySelector('#oc-envelopes-note').textContent='Los importes corresponden a turnos realizados antes del viernes y descuentan pagos al personal hasta esa fecha. Descargar etiquetas no registra pagos.';
+    root.querySelector('#oc-envelopes-note').textContent='Semanas de lunes a domingo. Se pagan únicamente turnos confirmados como realizados de esta semana, descontando anticipos y pagos. Los turnos aún por trabajar no se suman; confirma cada evento al terminar y actualiza el sobre antes de entregarlo. Las etiquetas muestran todos los turnos de la próxima semana. Descargar PDF no registra la entrega del dinero.';
+    renderWeeklyPlans();renderOlderBalances();
+  }
+  function renderOlderBalances(){
+    const host=root.querySelector('#oc-older-balances');host.replaceChildren();const week=weekDates();
+    personnel.forEach(person=>{const jobs=assignments.filter(a=>String(a.personId)===String(person.id)).map(a=>({assignment:a,event:eventById(a.eventId),balance:a.payCents-staffPaid(a.id)})).filter(j=>j.event.completed&&j.event.startDate<week.start&&j.balance>0);if(!jobs.length)return;const row=document.createElement('div');row.className='oc-payment-row';const label=document.createElement('span');label.textContent=person.name+' · '+currency(jobs.reduce((s,j)=>s+j.balance,0));const b=document.createElement('button');b.className='oc-text-button';b.type='button';b.textContent='Registrar pago anterior';b.addEventListener('click',()=>showStaffPayment({jobs},row));row.append(label,b);host.append(row);});
+    if(!host.children.length)host.textContent='Sin saldos anteriores pendientes.';
   }
   function showStaffPayment(row,cell){
     cell.querySelector('form')?.remove();const form=document.createElement('form');form.className='oc-booking';
-    form.innerHTML='<label>Turno<select name="turno">'+row.jobs.map(j=>'<option value="'+safe(j.assignment.id)+'">'+safe(j.event.name)+' · '+currency(j.balance)+'</option>').join('')+'</select></label><label>Importe (MXN)<input type="number" name="importe" min="0.01" step="0.01" required></label><label>Método<select name="metodo"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option></select></label><button type="submit" class="oc-primary oc-small-primary cursor-interaction">Guardar pago</button><p class="oc-booking-error" role="alert"></p>';
-    form.addEventListener('submit',e=>{
-      e.preventDefault();const f=new FormData(form);
-      try{const id=String(f.get('turno'));const job=row.jobs.find(j=>String(j.assignment.id)===id);const amount=toCents(f.get('importe'));if(amount<=0||amount>job.assignment.payCents-staffPaid(id))throw new Error('El importe supera el saldo actual del turno.');
-        staffPayments.push({id:nextKey(),assignmentId:id,date:bridge.today,amount,method:f.get('metodo')});commit('Registrar pago al personal');
-      }catch(error){form.querySelector('p').textContent=error.message;}
-    });cell.append(form);
+    form.innerHTML='<label>Turno<select name="turno">'+row.jobs.map(j=>'<option value="'+safe(j.assignment.id)+'">'+safe(j.event.name)+' · '+safe(j.event.startDate)+' · '+currency(j.balance)+'</option>').join('')+'</select></label><label>Importe (MXN)<input type="number" name="importe" min="0.01" step="0.01" required></label><label>Método<select name="metodo"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option></select></label><button type="submit" class="oc-primary oc-small-primary">Guardar pago</button><p class="oc-booking-error" role="alert"></p>';
+    form.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(form);try{const id=String(f.get('turno'));const job=row.jobs.find(j=>String(j.assignment.id)===id);const amount=toCents(f.get('importe'));if(amount<=0||amount>job.assignment.payCents-staffPaid(id))throw new Error('El importe supera el saldo actual del turno.');staffPayments.push({id:nextKey(),assignmentId:id,date:bridge.today,amount,method:f.get('metodo')});commit('Registrar pago al personal');}catch(error){form.querySelector('p').textContent=error.message;}});cell.append(form);
   }
-
   function mountDelete(){
     const pane=root.querySelector('[data-config-pane=datos]');const button=document.createElement('button');button.type='button';button.className='oc-text-button';button.textContent='Eliminar evento capturado por error';
-    button.addEventListener('click',()=>{
-      const ids=assignments.filter(a=>String(a.eventId)===String(currentEvent.id)).map(a=>String(a.id));
-      if(currentEvent.payments.length||staffPayments.some(p=>ids.includes(String(p.assignmentId)))){status('Este evento tiene pagos registrados y no puede eliminarse.',true);return;}
-      if(!window.confirm('¿Eliminar este evento y sus asignaciones?'))return;
-      const id=currentEvent.id;currentEventState.events=currentEventState.events.filter(e=>e.id!==id);
-      for(let i=assignments.length-1;i>=0;i--)if(String(assignments[i].eventId)===String(id))assignments.splice(i,1);
-      currentEvent=null;openPage('eventos');commit('Eliminar evento erróneo');
-    });pane.append(button);
+    button.addEventListener('click',()=>{const ids=assignments.filter(a=>String(a.eventId)===String(currentEvent.id)).map(a=>String(a.id));if(currentEvent.payments.length||staffPayments.some(p=>ids.includes(String(p.assignmentId)))){status('Este evento tiene pagos registrados y no puede eliminarse.',true);return;}if(!window.confirm('¿Eliminar este evento y sus asignaciones?'))return;const id=currentEvent.id;currentEventState.events=currentEventState.events.filter(e=>e.id!==id);for(let i=assignments.length-1;i>=0;i--)if(String(assignments[i].eventId)===String(id))assignments.splice(i,1);currentEvent=null;openPage('eventos');commit('Eliminar evento erróneo');});pane.append(button);
   }
 
-  root.querySelector('#oc-pay-friday').value=nextFriday();
-  root.querySelector('#oc-pay-friday').addEventListener('change',()=>{root.querySelector('#oc-ready-pdf').hidden=true;renderEnvelopes();});
-  root.querySelector('#oc-export-labels').addEventListener('click',()=>command('pdf',{friday:root.querySelector('#oc-pay-friday').value}));
+  root.querySelector('#oc-export-labels').addEventListener('click',()=>command('pdf'));
+  root.querySelector('#oc-prepare-week').addEventListener('click',()=>command('prepare_week'));
   hydrate(data.snapshot);states.forEach(renderMonth);renderPersonnel();
   openPage('inicio');
 

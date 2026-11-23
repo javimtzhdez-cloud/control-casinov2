@@ -1,0 +1,35 @@
+const fs=require('fs'),assert=require('node:assert/strict'),{spawnSync}=require('child_process');
+const {JSDOM,VirtualConsole}=require('jsdom');
+const path=require('path'),project=path.resolve(__dirname,'..');
+const errors=[];const vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
+const dom=new JSDOM('<div id="host"></div>',{runScripts:'dangerously',url:'https://tests.invalid',virtualConsole:vc});const w=dom.window;
+const root=w.document.querySelector('#host').attachShadow({mode:'open'});root.innerHTML=fs.readFileSync(project+'/ui.html','utf8');
+w.eval(fs.readFileSync(project+'/ui.js','utf8').replace('export default function','window.mount = function'));
+const seed="import json,backend;from backend import *;backend.today=lambda:date(2026,11,19);s=demo_data(date(2026,11,19));[(e.update(startDate=('2026-11-17' if e['completed'] else '2026-11-24'),endDate=('2026-11-18' if e['completed'] else '2026-11-25'))) for e in s['events']];done={e['id'] for e in s['events'] if e['completed']};s['assignments']=[a for a in s['assignments'] if a['eventId'] in done];print(json.dumps(dict(snapshot=validate(s),revision=0,today='2026-11-19',mode='pruebas',reply=None)))";
+let data=JSON.parse(spawnSync('python',['-c',seed],{encoding:'utf8',env:{...process.env,PYTHONPATH:project}}).stdout);let pending=[];
+function emit(key,value){assert.equal(key,'command');pending.push(value);}
+function render(){w.mount({parentElement:root,data,setTriggerValue:emit});}
+function flush(){assert.equal(pending.length,1);const cmd=pending.shift();const rpc=spawnSync('python',[project+'/tests/rpc_runner.py'],{input:JSON.stringify({state:data.snapshot,revision:data.revision,command:cmd,today:data.today}),encoding:'utf8',env:{...process.env,PYTHONPATH:project}});assert.equal(rpc.status,0,rpc.stderr);const response=JSON.parse(rpc.stdout);data={...data,snapshot:response.state,revision:response.revision,reply:response.reply};render();return response.reply;}
+function change(el,value,event='change'){el.value=value;el.dispatchEvent(new w.Event(event,{bubbles:true}));}
+function submit(form){form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));}
+function nav(page){root.querySelector('.oc-nav [data-oc-page='+page+']').click();}
+render();assert.equal(errors.length,0,errors.join('\n'));
+nav('personal');assert.equal(root.querySelectorAll('#oc-personnel-rows tr').length,40);
+root.querySelector('#oc-add-personnel').click();let pf=root.querySelector('#oc-personnel-form');pf.elements.nombre.value='Nueva persona';pf.elements.rol.value='Mesero';pf.elements.casino.value='Regina';submit(pf);assert.equal(flush().ok,true);assert.equal(data.snapshot.personnel.length,41);
+nav('eventos');const future=data.snapshot.events.find(e=>!e.completed&&e.casinoId===1);const card=root.querySelector('#oc-casino-1');card.querySelector('.oc-month').value=String(Number(future.startDate.slice(5,7))-1);card.querySelector('.oc-month').dispatchEvent(new w.Event('change'));card.querySelector('[data-date="'+future.startDate+'"]').click();card.querySelector('.oc-event-result').click();
+assert.equal(root.querySelector('[data-config-tab=equipo]'),null);
+let form=root.querySelector('#oc-contract');form.elements.contratante.value='Cliente de prueba';change(form.elements.precioPersona,'300.15','input');change(form.elements.carne,'Pollo Florentina (+$15.00 extra)');submit(form);assert.equal(flush().ok,true);assert.equal(data.snapshot.events.find(e=>e.id===future.id).totalCents,3151500);
+root.querySelector('[data-config-tab=cobros]').click();const pay=root.querySelector('#oc-event-payment');pay.elements.importe.value='1000.25';submit(pay);assert.equal(flush().ok,true);assert.equal(data.snapshot.events.find(e=>e.id===future.id).payments[0].amount,100025);
+root.querySelector('[data-config-tab=datos]').click();root.querySelector('#oc-download-contract').click();const contract=flush();assert.equal(contract.ok,true);assert.ok(contract.contractPdf.startsWith('JVBER'));assert.equal(root.querySelector('#oc-ready-contract').hidden,false);
+nav('pagos');assert.equal(pending[0].type,'prepare_week');assert.equal(flush().ok,true);assert.equal(data.snapshot.assignments.length,64);assert.equal(root.querySelector('#oc-pay-friday'),null);assert.equal(root.querySelectorAll('#oc-envelopes-rows tr').length,41);
+const plan=root.querySelector('#oc-weekly-plans form');plan.elements.count0.value='2';submit(plan);assert.equal(flush().ok,true);assert.equal(pending[0].type,'prepare_week');assert.equal(flush().ok,true);assert.equal(data.snapshot.assignments.length,65);
+const due=root.querySelector('#oc-envelopes-rows .oc-text-button');assert.ok(due);due.click();const wage=due.parentElement.querySelector('form');wage.elements.importe.value='100';submit(wage);assert.equal(flush().ok,true);
+root.querySelector('#oc-export-labels').click();const pdf=flush();assert.equal(pdf.ok,true);assert.ok(pdf.pdf.startsWith('JVBER'));assert.equal(root.querySelector('#oc-ready-pdf').hidden,false);
+nav('personal');const newId=data.snapshot.personnel.find(p=>p.name==='Nueva persona').id;root.querySelector('[data-person-id="'+newId+'"] [data-action=edit]').click();pf.elements.nombre.value='Persona editada';pf.elements.rol.value='DJ';submit(pf);assert.equal(flush().ok,true);assert.equal(data.snapshot.personnel.find(p=>p.id===newId).role,'DJ');
+w.confirm=()=>true;root.querySelector('[data-person-id="'+newId+'"] [data-action=delete]').click();assert.equal(flush().ok,true);assert.equal(data.snapshot.personnel.length,40);
+// Deleting a person with history preserves payroll and releases future unpaid shifts.
+const oldId=data.snapshot.personnel[0].id;root.querySelector('[data-person-id="'+oldId+'"] [data-action=delete]').click();assert.equal(flush().ok,true);assert.equal(data.snapshot.personnel.find(p=>p.id===oldId).active,false);assert.equal(root.querySelectorAll('#oc-personnel-rows tr').length,39);
+// Simulate another browser winning a revision: rejected local data must be replaced by server data.
+root.querySelector('#oc-add-personnel').click();pf=root.querySelector('#oc-personnel-form');pf.elements.nombre.value='No debe persistir';pf.elements.rol.value='DJ';pf.elements.casino.value='Anakai';submit(pf);data.revision+=1;assert.equal(flush().ok,false);assert.equal(data.snapshot.personnel.length,40);
+assert.equal(root.querySelectorAll('#oc-personnel-rows tr').length,39);assert.equal(errors.length,0,errors.join('\n'));
+process.stdout.write('OK: interfaz → Python → confirmación: alta, edición y baja, precio, extras, cobro, contrato, asignación semanal, nómina, PDF y conflicto entre sesiones.\n');w.close();

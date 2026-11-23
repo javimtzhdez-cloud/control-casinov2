@@ -70,14 +70,14 @@
       <div id="oc-personnel-empty" class="oc-personnel-empty">Aún no hay personal registrado.<span>Agrega al primer integrante de tu equipo.</span></div>
       <table class="oc-personnel-table" id="oc-personnel-table" hidden>
         <caption class="oc-visually-hidden">Directorio de personal por nombre, rol y casino habitual</caption>
-        <thead><tr><th scope="col">Nombre</th><th scope="col">Rol</th><th scope="col">Casino habitual</th></tr></thead>
+        <thead><tr><th scope="col">Nombre</th><th scope="col">Rol</th><th scope="col">Casino habitual</th><th scope="col">Acciones</th></tr></thead>
         <tbody id="oc-personnel-rows"></tbody>
       </table>
       <p class="oc-preview-footnote">Los registros se envían al servidor al pulsar Guardar personal.</p>
     </section>
     <section class="oc-envelopes-page" data-oc-panel="pagos" hidden>
       <div class="oc-envelopes-heading"><div><h2>Sobres</h2><p class="oc-intro">El pago de cada persona y los datos de su próximo evento.</p></div><span id="oc-envelopes-demo" class="oc-demo-note">Pago al personal</span></div>
-      <div class="oc-envelope-controls"><label>Viernes de entrega<input type="date" id="oc-pay-friday"></label><button type="button" id="oc-export-labels" class="oc-primary oc-small-primary">Preparar etiquetas PDF</button><a id="oc-ready-pdf" hidden class="oc-text-button">Descargar PDF preparado</a></div><p id="oc-payday-error" class="oc-booking-error" role="alert"></p><div class="oc-envelopes-subheading"><span id="oc-envelopes-count"></span><span id="oc-envelopes-total"></span></div>
+      <div class="oc-envelope-controls"><button type="button" id="oc-prepare-week" class="oc-text-button">Actualizar asignación semanal</button><button type="button" id="oc-export-labels" class="oc-primary oc-small-primary">Preparar etiquetas PDF</button><a id="oc-ready-pdf" hidden class="oc-text-button">Descargar PDF preparado</a></div><p id="oc-week-range" class="oc-config-help"></p><details class="oc-weekly-settings"><summary>Equipo necesario para la próxima semana</summary><div id="oc-weekly-plans"></div></details><details class="oc-weekly-settings"><summary>Saldos anteriores pendientes (fuera del total semanal)</summary><div id="oc-older-balances"></div></details><div class="oc-envelopes-subheading"><span id="oc-envelopes-count"></span><span id="oc-envelopes-total"></span></div>
       <div id="oc-envelopes-empty" class="oc-personnel-empty" hidden>No hay sobres por preparar.</div>
       <table class="oc-envelopes-table" id="oc-envelopes-table">
         <caption class="oc-visually-hidden">Lista de sobres con nombre, monto a pagar, próximo evento, horario y casino</caption>

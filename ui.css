@@ -308,3 +308,5 @@
 #calderon-design .oc-envelope-controls input{font-size:16px}
 #calderon-design .oc-config-tabs{flex-wrap:wrap}
 #calderon-design .oc-arrow span{font-size:21px;line-height:1}
+
+#calderon-design .oc-weekly-settings{border:1px solid #e5e0d6;border-radius:8px;padding:12px;margin:12px 0;font-size:13px} #calderon-design .oc-weekly-settings summary{cursor:pointer} #calderon-design .oc-plan-row{display:grid;grid-template-columns:1fr 90px 140px;gap:12px;align-items:center} #calderon-design .oc-plan-row label{font-size:11px} @media(max-width:600px){#calderon-design .oc-plan-row{grid-template-columns:1fr 65px 110px;gap:6px} #calderon-design .oc-plan-row strong{font-size:11px}}

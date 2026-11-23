@@ -1,7 +1,8 @@
 """Organización Calderón. Punto de entrada para Streamlit Cloud."""
 from pathlib import Path
 from copy import deepcopy
-from datetime import timedelta
+from datetime import timedelta, datetime
+from zoneinfo import ZoneInfo
 import base64
 import hashlib
 import hmac
@@ -9,9 +10,9 @@ import json
 import threading
 import time
 import streamlit as st
-from backend import today, empty_state, demo_data, validate, assign_auto, text
+from backend import today, empty_state, demo_data, validate, assign_auto, prepare_week, week_window, text
 from storage import MemoryStore, PostgresStore, Conflict
-from printing import envelope_pdf
+from printing import envelope_pdf, contract_pdf
 
 ROOT=Path(__file__).resolve().parent
 st.set_page_config(page_title='Organización Calderón',page_icon='🎟️',layout='wide',initial_sidebar_state='collapsed')
@@ -74,7 +75,7 @@ except Exception:
 def ui_component():
     return st.components.v2.component('calderon_v2',html=(ROOT/'ui.html').read_text(),css=(ROOT/'ui.css').read_text(),js=(ROOT/'ui.js').read_text(),isolate_styles=True)
 
-result=ui_component()(key='calderon-ui-'+mode+'-'+actor+'-'+str(st.session_state.get('ui_epoch',0)),data={'snapshot':snapshot,'revision':revision,'today':str(today()),'mode':mode,'reply':st.session_state.get('reply')},on_command_change=lambda:None,height='content')
+result=ui_component()(key='calderon-ui-'+mode+'-'+actor+'-'+str(st.session_state.get('ui_epoch',0)),data={'snapshot':snapshot,'revision':revision,'today':str(today()),'now':datetime.now(ZoneInfo('America/Mexico_City')).strftime('%Y-%m-%dT%H:%M:%S'),'mode':mode,'reply':st.session_state.get('reply')},on_command_change=lambda:None,height='content')
 command=result.command
 if command and command.get('id')!=st.session_state.get('last_request'):
     request_id=command.get('id','');reply={'id':request_id,'ok':False}
@@ -90,9 +91,21 @@ if command and command.get('id')!=st.session_state.get('last_request'):
             snapshot,revision=store.save(changed,base,request_id,actor)
             reply.update(ok=True,message='Personal asignado y guardado')
         elif kind=='refresh': reply.update(ok=True,message='Datos actualizados',refresh=True)
+        elif kind=='prepare_week':
+            current,current_rev=store.read()
+            if base!=current_rev: raise Conflict('Otra persona actualizó los datos. Pulsa Actualizar y vuelve a entrar a Sobres.')
+            changed=prepare_week(current)
+            if changed!=current: snapshot,revision=store.save(changed,base,request_id,actor)
+            missing=[e for e in changed['events'] if str(week_window()[1])<=e['startDate']<str(week_window()[2]) and not e['completed'] and not e.get('staffing')]
+            reply.update(ok=True,message='Asignación semanal actualizada.'+(' Hay eventos sin necesidades de personal: configúralas en Equipo necesario.' if missing else ''))
         elif kind=='pdf':
-            pdf=envelope_pdf(snapshot,command.get('friday'))
-            reply.update(ok=True,message='PDF preparado. Pulsa Descargar PDF preparado.',pdf=base64.b64encode(pdf).decode(),filename='sobres_'+command['friday']+'.pdf')
+            if base!=revision: raise Conflict('Actualiza los datos antes de preparar el PDF.')
+            pdf=envelope_pdf(snapshot)
+            reply.update(ok=True,message='PDF preparado. Pulsa Descargar PDF preparado.',pdf=base64.b64encode(pdf).decode(),filename='sobres_semana_'+str(week_window()[0])+'.pdf')
+        elif kind=='contract':
+            if base!=revision: raise Conflict('Actualiza la ficha antes de descargar el contrato.')
+            pdf=contract_pdf(snapshot,command.get('eventId'))
+            reply.update(ok=True,message='Contrato preparado con los datos guardados.',contractPdf=base64.b64encode(pdf).decode(),filename='contrato_'+str(command.get('eventId'))+'.pdf')
         else: raise ValueError('Operación no reconocida.')
     except (ValueError,TypeError,KeyError) as error:
         reply['message']=str(error)
@@ -103,6 +116,8 @@ if command and command.get('id')!=st.session_state.get('last_request'):
 last_pdf=st.session_state.get('reply',{})
 if last_pdf.get('pdf'):
     st.download_button('Descargar etiquetas PDF',base64.b64decode(last_pdf['pdf']),file_name=last_pdf['filename'],mime='application/pdf')
+if last_pdf.get('contractPdf'):
+    st.download_button('Descargar contrato PDF',base64.b64decode(last_pdf['contractPdf']),file_name=last_pdf['filename'],mime='application/pdf')
 
 with st.expander('Respaldo y pruebas'):
     st.download_button('Descargar respaldo JSON',json.dumps(snapshot,ensure_ascii=False,indent=2),file_name='calderon-respaldo.json',mime='application/json')
