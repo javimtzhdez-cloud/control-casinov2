@@ -1,0 +1,20 @@
+ORGANIZACIÓN CALDERÓN · PRUEBAS
+
+1. Descomprime este ZIP.
+2. Crea un repositorio nuevo en GitHub.
+3. Sube TODOS los archivos y carpetas descomprimidos, no el ZIP.
+   app.py debe quedar en la raíz junto a backend.py, storage.py,
+   printing.py, ui.html, ui.css, ui.js y requirements.txt.
+4. En share.streamlit.io elige Create app, tu repositorio, rama main,
+   archivo app.py y Python 3.12.
+5. Deja Secrets vacío y pulsa Deploy.
+6. La portada debe abrir con el aviso MODO PRUEBAS.
+
+YA INCLUYE 40 EMPLEADOS Y EVENTOS FICTICIOS PARA PROBAR.
+
+No necesitas instalar Python ni configurar Supabase para esa prueba.
+Los datos de pruebas viven sólo en la sesión de Streamlit.
+Descarga un respaldo JSON antes de cerrar si quieres conservarlos.
+
+README.md contiene el recorrido de prueba y cómo activar después
+el modo compartido con contraseñas y base PostgreSQL.

@@ -1,0 +1,9 @@
+.streamlit/secrets.toml
+.env
+.env.*
+node_modules/
+__pycache__/
+.pytest_cache/
+*.pyc
+calderon-respaldo*.json
+*.pdf
