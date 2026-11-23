@@ -94,13 +94,15 @@ En los guardados debe aparecer **Guardado** en la cabecera. Si aparece un confli
 - Esmeralda, Sophia y Regina priorizan personal habitual. Anakai prioriza trabajadores de otros salones con menos turnos históricos allí. Se evita asignar una persona dos veces el mismo día y se detectan cruces de madrugada.
 - Si falta personal, se rechaza el acomodo semanal completo sin guardar cambios parciales. Agrega personal o corrige cantidades antes de repetir.
 - Puedes corregir cantidades y paga de la próxima semana. Los turnos con anticipos no se eliminan ni pueden quedar con paga inferior a lo entregado. No se cambian los turnos de semanas anteriores.
-- Cada sobre muestra **sólo el saldo de turnos ya trabajados y confirmados de esta semana**, menos anticipos y pagos registrados. No suma salarios de la próxima semana ni turnos futuros de esta semana.
-- También muestra **todos sus eventos asignados de la próxima semana**, fecha, horario de 12 horas y salón, y la fecha de entrega al terminar su último turno de esta semana (incluye la madrugada si corresponde).
-- Si el jueves aún faltan eventos por trabajar el viernes o sábado, esos salarios todavía no se incluyen: confirma los eventos al terminar y vuelve a descargar las etiquetas antes de entregar el sobre.
-- Las deudas anteriores no se pierden: se consultan y pagan en **Saldos anteriores pendientes**, separadas del total semanal.
-- Puedes registrar pagos parciales o liquidar cada turno desde el trabajador; nunca se permite pagar de más. Los cobros del cliente y los pagos al personal son independientes.
-- Pulsa **Preparar etiquetas PDF** y **Descargar PDF preparado**. Descargar o imprimir no registra entrega de dinero.
-- Etiquetas carta, dos columnas por cinco filas, 4 × 2 pulgadas. Imprime al 100 % / tamaño real; prueba la alineación en papel normal. El texto largo produce etiquetas de continuación.
+- Sobres muestra cuatro listas desplegables: **Esmeralda, Sophia, Anakai y Regina**. Cada una contiene los sobres con dinero pendiente que se entregarán en ese casino.
+- Un empleado aparece una sola vez, en el casino de su **último turno asignado de esta semana**, aunque trabaje en varios salones. No se usa su casino habitual ni el de sus eventos futuros para decidir la entrega.
+- La fila muestra nombre, todos los eventos de la próxima semana (fecha, horario AM/PM y casino) y el dinero adeudado por los turnos ya realizados esta semana, descontando anticipos y pagos. Se puede desplegar el desglose de esos turnos.
+- Se identifica al maestro de ceremonias asignado al último evento; si falta, se indica **Maestro de ceremonias por asignar**.
+- Los hermanos escriben a mano **sólo el nombre y los próximos eventos** en el sobre, preparan el dinero y lo entregan al maestro de ceremonias para que lo reparta. El importe se consulta en pantalla; ya no se ofrece imprimir etiquetas en esta sección.
+- **Registrar pago al empleado** sirve cuando éste recibe el dinero. Pasar físicamente los sobres al maestro no marca los salarios como pagados.
+- Una persona sin saldo pendiente no genera sobre. Un casino sin eventos o sin sobres pendientes conserva su lista y muestra la indicación correspondiente.
+- Si el jueves aún faltan eventos por trabajar el viernes o sábado, esos salarios todavía no se incluyen: confirma los eventos al terminar y actualiza los sobres antes de entregarlos.
+- Los saldos de semanas anteriores se conservan en **Saldos anteriores pendientes**, separados del total semanal.
 
 ### 7. Borrar un error de captura
 
@@ -168,7 +170,7 @@ npm test
 
 No necesitas Node.js para ejecutar la aplicación en Streamlit: sólo para esa prueba de desarrollo. El workflow incluido ejecuta ambas verificaciones en GitHub Actions. Las pruebas no necesitan ni modifican tu base real de Supabase.
 
-Se verificaron **35 pruebas de Python**, incluido el arranque de Streamlit y la recepción/validación de cambios enviados por el componente. Además se probó el recorrido de interfaz → reglas Python → respuesta: alta, edición y baja, precio, extras, cobro, contrato, asignación semanal, pago de nómina, etiquetas y rechazo de conflictos. Las pruebas de interfaz usan DOM simulado; no sustituyen revisar el enlace desplegado en tu teléfono.
+Se verificaron **37 pruebas de Python**, incluido el arranque de Streamlit y la recepción/validación de cambios enviados por el componente. Además se probó el recorrido de interfaz → reglas Python → respuesta: alta, edición y baja, precio, extras, cobro, contrato, asignación semanal, pago de nómina, agrupación de sobres por casino y rechazo de conflictos. Las pruebas de interfaz usan DOM simulado; no sustituyen revisar el enlace desplegado en tu teléfono.
 
 No se ejecutó una conexión a tu proyecto Supabase ni se verificó su estado, permisos o límites. Al activar compartido, prueba con un registro ficticio y recarga desde otro navegador para comprobar esa conexión.
 

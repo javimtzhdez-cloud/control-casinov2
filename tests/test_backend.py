@@ -185,3 +185,27 @@ def test_weekly_plan_updates_future_rate_but_preserves_paid_history():
     assert next(a for a in out['assignments'] if a['eventId']==e['id'])['payCents']==70000
     e['staffing'][0]['count']=0
     assert not any(a['eventId']==e['id'] for a in prepare_week(s,'2026-11-19')['assignments'])
+
+
+def test_casino_handoff_uses_last_shift_not_base_and_no_duplicate_envelope():
+    s=weekly_fixture();person=s['personnel'][0];person['casino']='Regina'
+    s['assignments']=[a for a in s['assignments'] if a['eventId']!=s['events'][2]['id']]
+    event=event_on('2026-11-18',casino=2);event['completed']=True;s['events'].append(event)
+    s['assignments'].append(dict(id=uid(),eventId=event['id'],personId='ana',payCents=45000))
+    s['personnel'].append(dict(id='mc',name='Maestro Sophia',role='Maestro de ceremonias',casino='Sophia'))
+    s['assignments'].append(dict(id=uid(),eventId=event['id'],personId='mc',payCents=10000))
+    groups=envelope_groups(validate(s),'2026-11-19')
+    assert [g['name'] for g in groups]==CASINOS
+    rows=[(g['id'],r) for g in groups for r in g['envelopes'] if r['person']['id']=='ana']
+    assert len(rows)==1 and rows[0][0]==2
+    row=rows[0][1];assert row['amount']==82500 and row['masters']==['Maestro Sophia']
+    assert row['upcoming'][0]['startDate']=='2026-11-24'
+
+
+def test_casino_lists_omit_paid_people_and_next_week_only_workers():
+    s=weekly_fixture();job=s['assignments'][1]
+    s['staffPayments'].append(dict(id=uid(),assignmentId=job['id'],date='2026-11-19',amount=37500,method='Efectivo'))
+    groups=envelope_groups(validate(s),'2026-11-19')
+    assert len(groups)==4 and not any(g['envelopes'] for g in groups)
+    assert any(g['events'] for g in groups)
+    assert not any(g['events'] for g in envelope_groups(empty_state(),'2026-11-19'))

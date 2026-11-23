@@ -230,9 +230,22 @@ def envelopes(data,reference=None):
                 if e['completed'] and a['payCents']>paid: jobs.append({'assignment':a,'event':e,'balance':a['payCents']-paid})
             if not e['completed'] and str(next_start)<=e['startDate']<str(next_end): upcoming.append(e)
         upcoming.sort(key=lambda e:e['startDate']+'T'+e['startTime'])
+        last=max(this_week,key=lambda e:(e['startDate'],e['startTime']),default=None)
+        masters=[]
+        if last:
+            for shift in data['assignments']:
+                if str(shift['eventId'])!=str(last['id']): continue
+                worker=next(p for p in data['personnel'] if str(p['id'])==str(shift['personId']))
+                if shift.get('role',worker['role'])=='Maestro de ceremonias': masters.append(worker['name'])
         if person.get('active',True) or jobs or upcoming:
-            result.append({'person':person,'amount':sum(j['balance'] for j in jobs),'jobs':jobs,'next':upcoming[0] if upcoming else None,'upcoming':upcoming,'delivery':max((e['endDate'] for e in this_week),default=None)})
+            result.append({'person':person,'amount':sum(j['balance'] for j in jobs),'jobs':jobs,'next':upcoming[0] if upcoming else None,'upcoming':upcoming,'delivery':last['endDate'] if last else None,'deliveryEvent':last,'deliveryCasinoId':last['casinoId'] if last else None,'masters':masters})
     return result
+
+def envelope_groups(data,reference=None):
+    """Un solo sobre por persona: último salón donde trabaja esta semana."""
+    start,end,_=week_window(reference)
+    rows=envelopes(data,reference)
+    return [{'id':cid,'name':name,'events':[e for e in data['events'] if e['casinoId']==cid and str(start)<=e['startDate']<str(end)],'envelopes':[row for row in rows if row['amount']>0 and row['deliveryCasinoId']==cid]} for cid,name in enumerate(CASINOS,1)]
 
 def demo_data(now=None):
     now=now or today();data=empty_state()
