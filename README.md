@@ -17,7 +17,7 @@ Diseño aprobado con logo, cabecera y cuatro secciones: Verificar disponibilidad
 1. Descomprime `Organizacion_Calderon_GitHub_Pruebas.zip`.
 2. En GitHub crea un repositorio nuevo, por ejemplo **organizacion-calderon-pruebas**. Así puedes conservar tu versión anterior.
 3. Elige **Add file → Upload files**. Sube **el contenido descomprimido**, incluidos archivos y carpetas. No subas sólo el ZIP ni solamente `app.py`.
-4. En la raíz del repositorio deben aparecer juntos `app.py`, `backend.py`, `storage.py`, `printing.py`, `ui.html`, `ui.css`, `ui.js` y `requirements.txt`. Conserva también `.streamlit/config.toml`. El resto son guía y pruebas de desarrollo.
+4. En la raíz del repositorio deben aparecer juntos `app.py`, `calderon_runtime.py`, `backend.py`, `storage.py`, `printing.py`, `ui.html`, `ui.css`, `ui.js` y `requirements.txt`. Conserva también `.streamlit/config.toml`. El resto son guía y pruebas de desarrollo.
 5. Pulsa **Commit changes**.
 6. Abre https://share.streamlit.io, elige **Create app** y conecta ese repositorio.
 7. Indica la rama **main** y el archivo principal **app.py**. En **Advanced settings**, selecciona **Python 3.12**.
@@ -147,6 +147,7 @@ Sin Secrets entra en pruebas. Para usar el modo compartido localmente, crea `.st
 ## Estructura del código
 
 - `app.py`: arranque, modos, acceso, acciones del servidor y respaldos.
+- `calderon_runtime.py`: carga por versión de backend, almacenamiento y PDF; evita reutilizar módulos antiguos al actualizar Streamlit.
 - `backend.py`: reglas de costos, eventos, disponibilidad, asignaciones y sobres.
 - `storage.py`: almacenamiento de sesión y PostgreSQL con control de revisión.
 - `printing.py`: contratos y etiquetas PDF con ReportLab y fuentes incorporadas.
@@ -171,7 +172,7 @@ npm test
 
 No necesitas Node.js para ejecutar la aplicación en Streamlit: sólo para esa prueba de desarrollo. El workflow incluido ejecuta ambas verificaciones en GitHub Actions. Las pruebas no necesitan ni modifican tu base real de Supabase.
 
-Se verificaron **41 pruebas de Python**, incluido el arranque de Streamlit y la recepción/validación de cambios enviados por el componente. Además se probó el recorrido de interfaz → reglas Python → respuesta: alta, edición y baja, precio, extras, cobro, contrato, asignación semanal, pago de nómina, agrupación de sobres por casino y rechazo de conflictos. Las pruebas de interfaz usan DOM simulado; no sustituyen revisar el enlace desplegado en tu teléfono.
+Se verificaron **44 pruebas de Python**, incluido el arranque de Streamlit y la recepción/validación de cambios enviados por el componente. Además se probó el recorrido de interfaz → reglas Python → respuesta: alta, edición y baja, precio, extras, cobro, contrato, asignación semanal, pago de nómina, agrupación de sobres por casino y rechazo de conflictos. Las pruebas de interfaz usan DOM simulado; no sustituyen revisar el enlace desplegado en tu teléfono.
 
 No se ejecutó una conexión a tu proyecto Supabase ni se verificó su estado, permisos o límites. Al activar compartido, prueba con un registro ficticio y recarga desde otro navegador para comprobar esa conexión.
 

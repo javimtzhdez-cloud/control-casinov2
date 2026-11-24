@@ -40,3 +40,14 @@ def test_app_weekly_assignment_and_contract_download_commands():
     saved,revision=at.session_state['test_store'].read();assert len(saved['assignments'])==1
     at.session_state[key]={'command':dict(id=uid(),revision=revision,type='contract',eventId='fiesta')};at.run()
     assert not at.exception and at.session_state['reply'].get('contractPdf','').startswith('JVBER'),at.session_state['reply']
+
+
+def test_app_boots_with_stale_backend_cached_in_python(monkeypatch):
+    import sys
+    from types import ModuleType
+    stale=ModuleType('backend')
+    stale.today=lambda:None
+    monkeypatch.setitem(sys.modules,'backend',stale)
+    at=AppTest.from_file(str(ROOT/'app.py'),default_timeout=30).run()
+    assert not at.exception
+    assert len(at.session_state['test_store'].read()[0]['personnel'])==40

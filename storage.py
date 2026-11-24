@@ -3,7 +3,10 @@ from copy import deepcopy
 from threading import RLock
 from contextlib import contextmanager
 import json
-from backend import empty_state, validate, assign_auto, uid
+if __package__:
+    from .backend import empty_state, validate, assign_auto, uid
+else:
+    from backend import empty_state, validate, assign_auto, uid
 
 class Conflict(ValueError): pass
 

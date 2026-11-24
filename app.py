@@ -10,11 +10,15 @@ import json
 import threading
 import time
 import streamlit as st
-from backend import today, empty_state, demo_data, validate, assign_auto, prepare_week, prepare_envelopes, week_window, text
-from storage import MemoryStore, PostgresStore, Conflict
-from printing import envelope_pdf, contract_pdf
+from calderon_runtime import load_runtime
 
 ROOT=Path(__file__).resolve().parent
+runtime=load_runtime(ROOT)
+rules=runtime.backend
+today,empty_state,demo_data,validate,assign_auto,prepare_week,prepare_envelopes,week_window,text=(
+    getattr(rules,name) for name in ('today','empty_state','demo_data','validate','assign_auto','prepare_week','prepare_envelopes','week_window','text'))
+MemoryStore,PostgresStore,Conflict=runtime.storage.MemoryStore,runtime.storage.PostgresStore,runtime.storage.Conflict
+envelope_pdf,contract_pdf=runtime.printing.envelope_pdf,runtime.printing.contract_pdf
 st.set_page_config(page_title='Organización Calderón',page_icon='🎟️',layout='wide',initial_sidebar_state='collapsed')
 st.markdown('<style>.block-container{max-width:1100px;padding:0.8rem 0.6rem 1rem} [data-testid="stHeader"]{background:transparent} [data-testid="stToolbar"]{opacity:.5}</style>',unsafe_allow_html=True)
 
@@ -42,7 +46,7 @@ def login(users):
     st.stop()
 
 @st.cache_resource
-def shared_store(config):
+def shared_store(config,runtime_version):
     result=PostgresStore(config);result.initialize();return result
 
 try: settings=dict(st.secrets)
@@ -55,7 +59,7 @@ if mode=='compartido':
     if not users or any(len(str(v.get('clave','')))<12 or str(v.get('clave','')).startswith('CAMBIA_') for v in users.values()):
         st.info('Completa usuarios y contraseñas de al menos 12 caracteres en Settings → Secrets. Usa secrets-compartido.ejemplo.toml como guía.');st.stop()
     actor=login(users)
-    try: store=shared_store(dict(settings['database']))
+    try: store=shared_store(dict(settings['database']),runtime.version)
     except Exception:
         st.error('No se pudo conectar. Revisa host, user, password y que Supabase esté activo. No se cambió a modo pruebas.');st.stop()
     c1,c2=st.columns([5,1]);c1.caption('Modo compartido · '+actor)

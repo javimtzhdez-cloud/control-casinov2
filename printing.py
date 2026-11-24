@@ -75,7 +75,10 @@ def hour_label(value):
     h,m=map(int,value.split(':'));return f"{h%12 or 12}:{m:02d} "+('a. m.' if h<12 else 'p. m.')
 
 def envelope_pdf(data, reference=None):
-    from backend import envelopes, CASINOS
+    if __package__:
+        from .backend import envelopes, CASINOS
+    else:
+        from backend import envelopes, CASINOS
     labels=[]
     for row in envelopes(data,reference):
         p=row['person']; next_events=row['upcoming']
@@ -87,7 +90,10 @@ def envelope_pdf(data, reference=None):
 
 def contract_pdf(data,event_id):
     """Borrador operativo para completar y revisar; no acredita registro legal."""
-    from backend import CASINOS, pricing, today
+    if __package__:
+        from .backend import CASINOS, pricing, today
+    else:
+        from backend import CASINOS, pricing, today
     from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib import colors
