@@ -83,25 +83,26 @@ En los guardados debe aparecer **Guardado** en la cabecera. Si aparece un confli
 - Registra el apartado y abonos desde Pagos. Luego, en Evento, pulsa **Descargar contrato PDF** y el enlace de descarga preparado.
 - El PDF contiene inicio y fin con sus fechas, tipo, salón, asistentes, menú, mobiliario, precio y extras, apartado, saldo, condiciones y firmas. Usa exclusivamente los datos confirmados en el servidor.
 - Es un **borrador para revisar y completar**. Marca los datos faltantes, calendario de pagos, condiciones de cancelación y datos fiscales. No presenta un registro Profeco inventado ni impone pérdida automática del apartado. Antes de usarlo con clientes deben completarse los datos y revisarse el contenido y registro aplicable.
-- En esta misma sección está **Confirmar evento realizado**, disponible cuando ha terminado. Los eventos sin confirmar no se suman a la paga trabajada.
+- En esta misma sección está **Confirmar evento realizado**, disponible cuando ha terminado. Confirmar la realización es independiente de preparar sobres y registrar la entrega del dinero.
 
 ### 6. Sobres y asignación semanal automática
 
 - **No hay selector de fecha.** La fecha de México determina la semana actual, de lunes a domingo, y la próxima semana completa. Puedes preparar los sobres el jueves.
-- Al entrar en Sobres se completa automáticamente la asignación de los eventos de la próxima semana, usando sus necesidades guardadas.
-- Abre **Equipo necesario para la próxima semana**. Por cada evento define cantidad de personas por rol y paga individual por turno. Guarda: se ejecutará el acomodo automáticamente. También puedes pulsar **Actualizar asignación semanal**.
+- Abrir Sobres sólo consulta las listas. El botón **Preparar sobres de esta semana** permite prepararlos cualquier día: martes, jueves, domingo, etc. Usa la semana de lunes a domingo que contiene la fecha actual de México.
+- Abre **Equipo necesario de esta semana y la siguiente**. Por cada evento define cantidades y paga por rol. Guarda y luego pulsa **Preparar sobres de esta semana**: completa las asignaciones de ambas semanas, compara los nombres y recalcula los sobres. Guardar necesidades por sí solo no ejecuta el acomodo.
 - Los eventos nuevos necesitan que definas sus cantidades; la aplicación no inventa cuántos meseros, policías o cocineros requiere un evento.
-- Esmeralda, Sophia y Regina priorizan personal habitual. Anakai prioriza trabajadores de otros salones con menos turnos históricos allí. Se evita asignar una persona dos veces el mismo día y se detectan cruces de madrugada.
+- Esmeralda, Sophia y Regina priorizan personal habitual. Anakai prioriza trabajadores de otros salones con menos turnos allí durante los últimos 14 días. Entre personas con la misma prioridad se favorece a quien tenga menos trabajo reciente. Los datos antiguos no influyen en la rotación; este cambio no borra registros ni pagos. Se evita asignar una persona dos veces el mismo día y se detectan cruces de madrugada.
 - Si falta personal, se rechaza el acomodo semanal completo sin guardar cambios parciales. Agrega personal o corrige cantidades antes de repetir.
 - Puedes corregir cantidades y paga de la próxima semana. Los turnos con anticipos no se eliminan ni pueden quedar con paga inferior a lo entregado. No se cambian los turnos de semanas anteriores.
 - Sobres muestra cuatro listas desplegables: **Esmeralda, Sophia, Anakai y Regina**. Cada una contiene los sobres con dinero pendiente que se entregarán en ese casino.
 - Un empleado aparece una sola vez, en el casino de su **último turno asignado de esta semana**, aunque trabaje en varios salones. No se usa su casino habitual ni el de sus eventos futuros para decidir la entrega.
-- La fila muestra nombre, todos los eventos de la próxima semana (fecha, horario AM/PM y casino) y el dinero adeudado por los turnos ya realizados esta semana, descontando anticipos y pagos. Se puede desplegar el desglose de esos turnos.
+- La fila muestra nombre, todos los eventos de la próxima semana (fecha, horario AM/PM y casino) y el dinero adeudado por todos los turnos programados de esta semana, descontando anticipos y pagos. Se puede desplegar el desglose de esos turnos.
 - Se identifica al maestro de ceremonias asignado al último evento; si falta, se indica **Maestro de ceremonias por asignar**.
 - Los hermanos escriben a mano **sólo el nombre y los próximos eventos** en el sobre, preparan el dinero y lo entregan al maestro de ceremonias para que lo reparta. El importe se consulta en pantalla; ya no se ofrece imprimir etiquetas en esta sección.
 - **Registrar pago al empleado** sirve cuando éste recibe el dinero. Pasar físicamente los sobres al maestro no marca los salarios como pagados.
-- Una persona sin saldo pendiente no genera sobre. Un casino sin eventos o sin sobres pendientes conserva su lista y muestra la indicación correspondiente.
-- Si el jueves aún faltan eventos por trabajar el viernes o sábado, esos salarios todavía no se incluyen: confirma los eventos al terminar y actualiza los sobres antes de entregarlos.
+- Una persona con turnos esta semana conserva su fila incluso si ya se pagó todo; en ese caso muestra $0 pendiente y el botón de pago está deshabilitado. Un casino sin eventos o sin sobres pendientes conserva su lista y muestra la indicación correspondiente.
+- Si preparas los sobres el martes, se incluyen las pagas programadas del viernes, sábado y domingo de esa misma semana aunque no se hayan realizado todavía. Es un importe previsto; vuelve a preparar si cambian los eventos. Preparar no marca turnos como realizados ni dinero como entregado.
+- Si alguien sólo trabaja la próxima semana aparece en **Personal por avisar**, con sus turnos para que Omar le envíe un mensaje manualmente. No se envían mensajes automáticamente. Si un empleado no trabaja la próxima semana, el espacio de próximos eventos del sobre queda en blanco.
 - Los saldos de semanas anteriores se conservan en **Saldos anteriores pendientes**, separados del total semanal.
 
 ### 7. Borrar un error de captura
@@ -170,7 +171,7 @@ npm test
 
 No necesitas Node.js para ejecutar la aplicación en Streamlit: sólo para esa prueba de desarrollo. El workflow incluido ejecuta ambas verificaciones en GitHub Actions. Las pruebas no necesitan ni modifican tu base real de Supabase.
 
-Se verificaron **37 pruebas de Python**, incluido el arranque de Streamlit y la recepción/validación de cambios enviados por el componente. Además se probó el recorrido de interfaz → reglas Python → respuesta: alta, edición y baja, precio, extras, cobro, contrato, asignación semanal, pago de nómina, agrupación de sobres por casino y rechazo de conflictos. Las pruebas de interfaz usan DOM simulado; no sustituyen revisar el enlace desplegado en tu teléfono.
+Se verificaron **41 pruebas de Python**, incluido el arranque de Streamlit y la recepción/validación de cambios enviados por el componente. Además se probó el recorrido de interfaz → reglas Python → respuesta: alta, edición y baja, precio, extras, cobro, contrato, asignación semanal, pago de nómina, agrupación de sobres por casino y rechazo de conflictos. Las pruebas de interfaz usan DOM simulado; no sustituyen revisar el enlace desplegado en tu teléfono.
 
 No se ejecutó una conexión a tu proyecto Supabase ni se verificó su estado, permisos o límites. Al activar compartido, prueba con un registro ficticio y recarga desde otro navegador para comprobar esa conexión.
 

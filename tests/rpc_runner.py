@@ -1,7 +1,7 @@
 """Adaptador de pruebas: ejecuta las mismas reglas Python que recibe la interfaz."""
 import json
 import sys
-from backend import validate,assign_auto,envelopes,prepare_week
+from backend import validate,assign_auto,envelopes,prepare_week,prepare_envelopes
 from printing import envelope_pdf,contract_pdf
 import base64
 req=json.load(sys.stdin);
@@ -14,6 +14,7 @@ try:
     if cmd['revision']!=rev:raise ValueError('Conflicto de revisión')
     if cmd['type']=='save':state=validate(cmd['snapshot']);rev+=1
     elif cmd['type']=='auto_assign':state=assign_auto(state,cmd['eventId'],cmd['role'],cmd['count'],cmd['payCents']);rev+=1
+    elif cmd['type']=='prepare_envelopes':state=prepare_envelopes(state);rev+=1
     elif cmd['type']=='prepare_week':state=prepare_week(state);rev+=1
     elif cmd['type']=='contract':
         pdf=contract_pdf(state,cmd['eventId'])

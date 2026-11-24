@@ -10,7 +10,7 @@ import json
 import threading
 import time
 import streamlit as st
-from backend import today, empty_state, demo_data, validate, assign_auto, prepare_week, week_window, text
+from backend import today, empty_state, demo_data, validate, assign_auto, prepare_week, prepare_envelopes, week_window, text
 from storage import MemoryStore, PostgresStore, Conflict
 from printing import envelope_pdf, contract_pdf
 
@@ -91,13 +91,13 @@ if command and command.get('id')!=st.session_state.get('last_request'):
             snapshot,revision=store.save(changed,base,request_id,actor)
             reply.update(ok=True,message='Personal asignado y guardado')
         elif kind=='refresh': reply.update(ok=True,message='Datos actualizados',refresh=True)
-        elif kind=='prepare_week':
+        elif kind in ['prepare_week','prepare_envelopes']:
             current,current_rev=store.read()
             if base!=current_rev: raise Conflict('Otra persona actualizó los datos. Pulsa Actualizar y vuelve a entrar a Sobres.')
-            changed=prepare_week(current)
+            changed=prepare_envelopes(current) if kind=='prepare_envelopes' else prepare_week(current)
             if changed!=current: snapshot,revision=store.save(changed,base,request_id,actor)
-            missing=[e for e in changed['events'] if str(week_window()[1])<=e['startDate']<str(week_window()[2]) and not e['completed'] and not e.get('staffing')]
-            reply.update(ok=True,message='Asignación semanal actualizada.'+(' Hay eventos sin necesidades de personal: configúralas en Equipo necesario.' if missing else ''))
+            missing=[e for e in changed['events'] if str(week_window()[0] if kind=='prepare_envelopes' else week_window()[1])<=e['startDate']<str(week_window()[2]) and not e['completed'] and not e.get('staffing')]
+            reply.update(ok=True,message=('Sobres de esta semana preparados. Próximos turnos actualizados.' if kind=='prepare_envelopes' else 'Asignación semanal actualizada.')+(' Hay eventos sin necesidades de personal: configúralas en Equipo necesario.' if missing else ''))
         elif kind=='pdf':
             if base!=revision: raise Conflict('Actualiza los datos antes de preparar el PDF.')
             pdf=envelope_pdf(snapshot)

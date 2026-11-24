@@ -132,10 +132,10 @@ def weekly_fixture():
     s['staffPayments']=[dict(id=uid(),assignmentId=s['assignments'][1]['id'],date='2026-11-18',amount=12500,method='Efectivo')]
     return validate(s)
 
-def test_weekly_envelope_only_worked_current_week_and_all_next_week():
+def test_weekly_envelope_projects_all_current_week_and_all_next_week():
     s=weekly_fixture();row=envelopes(s,'2026-11-19')[0]
-    assert row['amount']==37500
-    assert [j['event']['startDate'] for j in row['jobs']]==['2026-11-17']
+    assert row['amount']==87500
+    assert [j['event']['startDate'] for j in row['jobs']]==['2026-11-17','2026-11-20']
     assert [e['startDate'] for e in row['upcoming']]==['2026-11-24']
     assert row['delivery']=='2026-11-21'
 
@@ -157,7 +157,7 @@ def test_weekly_preparation_rolls_back_if_second_event_lacks_staff():
 
 def test_archived_people_keep_balances_and_are_not_auto_assigned():
     s=weekly_fixture();s['personnel'][0]['active']=False
-    assert envelopes(validate(s),'2026-11-19')[0]['amount']==37500
+    assert envelopes(validate(s),'2026-11-19')[0]['amount']==87500
     s['assignments']=s['assignments'][:2]
     with pytest.raises(ValueError,match='Faltan'):assign_auto(s,s['events'][3]['id'],'Mesero',1,50000)
     s['personnel']=[]
@@ -206,6 +206,46 @@ def test_casino_lists_omit_paid_people_and_next_week_only_workers():
     s=weekly_fixture();job=s['assignments'][1]
     s['staffPayments'].append(dict(id=uid(),assignmentId=job['id'],date='2026-11-19',amount=37500,method='Efectivo'))
     groups=envelope_groups(validate(s),'2026-11-19')
-    assert len(groups)==4 and not any(g['envelopes'] for g in groups)
+    assert len(groups)==4
+    assert sum(r['amount'] for g in groups for r in g['envelopes'])==50000
     assert any(g['events'] for g in groups)
     assert not any(g['events'] for g in envelope_groups(empty_state(),'2026-11-19'))
+
+
+def test_prepare_button_on_tuesday_projects_weekend_and_compares_next_week():
+    s=empty_state();s['personnel']=[dict(id='ana',name='Ana',role='Mesero',casino='Esmeralda'),dict(id='beto',name='Beto',role='DJ',casino='Sophia')]
+    for day,role,cid in [('2026-11-20','Mesero',1),('2026-11-21','Mesero',1),('2026-11-27','Mesero',1),('2026-11-28','DJ',2)]:
+        e=event_on(day,casino=cid);e['staffing']=[dict(role=role,count=1,payCents=50000)];s['events'].append(e)
+    before=deepcopy(s);prepared=prepare_envelopes(s,'2026-11-17')
+    assert s==before and len(prepared['assignments'])==4
+    assert prepared['staffPayments']==[] and not any(e['completed'] for e in prepared['events'])
+    ana=next(r for r in envelopes(prepared,'2026-11-17') if r['person']['id']=='ana')
+    assert ana['amount']==100000 and len(ana['jobs'])==2 and len(ana['upcoming'])==1
+    assert ana['deliveryEvent']['startDate']=='2026-11-21'
+    assert [r['person']['id'] for r in weekly_notices(prepared,'2026-11-17')]==['beto']
+    assert prepare_envelopes(prepared,'2026-11-17')==prepared
+    assert sum(len(g['envelopes']) for g in envelope_groups(prepared,'2026-11-17'))==1
+
+
+def test_prepare_button_keeps_name_only_when_no_next_week_work():
+    s=weekly_fixture();s['assignments']=[a for a in s['assignments'] if a['eventId']!=s['events'][3]['id']]
+    row=next(r for g in envelope_groups(s,'2026-11-17') for r in g['envelopes'])
+    assert row['upcoming']==[] and row['amount']==100000
+
+
+def test_rotation_ignores_history_older_than_two_weeks():
+    s=empty_state();s['personnel']=[dict(id='ana',name='Ana',role='Mesero',casino='Esmeralda'),dict(id='beto',name='Beto',role='Mesero',casino='Esmeralda')]
+    for day,pid in [('2026-10-10','ana'),('2026-10-17','ana'),('2026-11-20','beto')]:
+        e=event_on(day);s['events'].append(e);s['assignments'].append(dict(id=uid(),eventId=e['id'],personId=pid,payCents=50000))
+    event=event_on('2026-11-27');s['events'].append(event)
+    assigned=assign_auto(validate(s),event['id'],'Mesero',1,50000)
+    assert assigned['assignments'][-1]['personId']=='ana'
+
+
+def test_preparing_current_and_next_week_is_atomic_when_next_week_fails():
+    s=empty_state();s['personnel']=[dict(id='ana',name='Ana',role='Mesero',casino='Esmeralda')]
+    for day,role in [('2026-11-20','Mesero'),('2026-11-27','DJ')]:
+        e=event_on(day);e['staffing']=[dict(role=role,count=1,payCents=50000)];s['events'].append(e)
+    before=deepcopy(s)
+    with pytest.raises(ValueError):prepare_envelopes(s,'2026-11-17')
+    assert s==before

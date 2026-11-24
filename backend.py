@@ -171,7 +171,8 @@ def assign_auto(snapshot,event_id,role,count,pay):
     event_map={str(e['id']):e for e in data['events']}
     busy={str(a['personId']) for a in data['assignments'] if event_map[str(a['eventId'])]['startDate']==event['startDate']}
     def rank(person):
-        history=[event_map[str(a['eventId'])] for a in data['assignments'] if str(a['personId'])==str(person['id']) and event_map[str(a['eventId'])]['startDate']<event['startDate']]
+        cutoff=str(date.fromisoformat(event['startDate'])-timedelta(days=14))
+        history=[event_map[str(a['eventId'])] for a in data['assignments'] if str(a['personId'])==str(person['id']) and cutoff<=event_map[str(a['eventId'])]['startDate']<event['startDate']]
         if event['casinoId']==3:
             return (person['casino']=='Anakai',sum(e['casinoId']==3 for e in history),len(history),person['name'].casefold())
         return (person['casino']!=CASINOS[event['casinoId']-1],len(history),person['name'].casefold())
@@ -189,9 +190,10 @@ def week_window(reference=None):
     monday=reference-timedelta(days=reference.weekday())
     return monday,monday+timedelta(days=7),monday+timedelta(days=14)
 
-def prepare_week(snapshot,reference=None):
+def prepare_week(snapshot,reference=None,week_offset=1):
     """Completa planes de la próxima semana sin duplicar; todo o ningún cambio."""
-    data=deepcopy(snapshot);_,start,end=week_window(reference)
+    data=deepcopy(snapshot);monday,_,_=week_window(reference)
+    start=monday+timedelta(days=7*week_offset);end=start+timedelta(days=7)
     events=sorted([e for e in data['events'] if str(start)<=e['startDate']<str(end) and not e['completed']],key=lambda e:(e['startDate'],e['startTime'],e['casinoId']))
     for event in events:
         assigned=[a for a in data['assignments'] if str(a['eventId'])==str(event['id'])]
@@ -215,6 +217,14 @@ def prepare_week(snapshot,reference=None):
                 except ValueError as error: raise ValueError(f"{event['name']} ({event['startDate']}): {error} No se guardó ningún cambio semanal.") from error
     return validate(data)
 
+def prepare_envelopes(snapshot,reference=None):
+    # Ambos acomodos se guardan en una sola transacción por el llamador.
+    current=prepare_week(snapshot,reference,week_offset=0)
+    return prepare_week(current,reference)
+
+def weekly_notices(data,reference=None):
+    return [row for row in envelopes(data,reference) if row['deliveryEvent'] is None and row['upcoming']]
+
 def envelopes(data,reference=None):
     reference=date.fromisoformat(reference) if isinstance(reference,str) else reference or today()
     start,next_start,next_end=week_window(reference)
@@ -227,7 +237,7 @@ def envelopes(data,reference=None):
             paid=sum(p['amount'] for p in data['staffPayments'] if str(p['assignmentId'])==str(a['id']) and p['date']<=str(reference))
             if str(start)<=e['startDate']<str(next_start):
                 this_week.append(e)
-                if e['completed'] and a['payCents']>paid: jobs.append({'assignment':a,'event':e,'balance':a['payCents']-paid})
+                if a['payCents']>paid: jobs.append({'assignment':a,'event':e,'balance':a['payCents']-paid})
             if not e['completed'] and str(next_start)<=e['startDate']<str(next_end): upcoming.append(e)
         upcoming.sort(key=lambda e:e['startDate']+'T'+e['startTime'])
         last=max(this_week,key=lambda e:(e['startDate'],e['startTime']),default=None)
@@ -245,7 +255,7 @@ def envelope_groups(data,reference=None):
     """Un solo sobre por persona: último salón donde trabaja esta semana."""
     start,end,_=week_window(reference)
     rows=envelopes(data,reference)
-    return [{'id':cid,'name':name,'events':[e for e in data['events'] if e['casinoId']==cid and str(start)<=e['startDate']<str(end)],'envelopes':[row for row in rows if row['amount']>0 and row['deliveryCasinoId']==cid]} for cid,name in enumerate(CASINOS,1)]
+    return [{'id':cid,'name':name,'events':[e for e in data['events'] if e['casinoId']==cid and str(start)<=e['startDate']<str(end)],'envelopes':[row for row in rows if row['deliveryEvent'] is not None and row['deliveryCasinoId']==cid]} for cid,name in enumerate(CASINOS,1)]
 
 def demo_data(now=None):
     now=now or today();data=empty_state()

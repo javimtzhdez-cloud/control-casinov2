@@ -47,9 +47,7 @@ const root=parentElement.querySelector('#calderon-design');
       const a=root.querySelector('#oc-ready-pdf');a.href='data:application/pdf;base64,'+reply.pdf;a.download=reply.filename;a.hidden=false;
     }
     if(reply.contractPdf){const a=root.querySelector('#oc-ready-contract');if(a){a.href='data:application/pdf;base64,'+reply.contractPdf;a.download=reply.filename;a.hidden=false;}}
-    const prepareAgain=reply.ok&&bridge.pendingType==='save'&&bridge.pendingLabel==='Guardar necesidades de personal';
     status(reply.ok?(reply.message||'Guardado'):reply.message,true===!reply.ok);
-    if(prepareAgain)command('prepare_week');
   }
   root.__calderon={receive};
 
@@ -61,7 +59,7 @@ const root=parentElement.querySelector('#calderon-design');
     if(root.querySelector('.oc-day-popover'))hideDayPopover();
     panels.forEach(panel=>{panel.hidden=panel.dataset.ocPanel!==page;});
     const activeRoute=page==='configurar'?'eventos':page;
-    if(page==='pagos'){renderEnvelopes();command('prepare_week');}
+    if(page==='pagos')renderEnvelopes();
     if(page==='disponibilidad'||page==='eventos'){
       calendarMode=page;
       const mount=root.querySelector(page==='eventos'?'#oc-events-calendar-mount':'#oc-availability-calendar-mount');
@@ -546,7 +544,7 @@ const root=parentElement.querySelector('#calderon-design');
   function mountStaff(){
     const pane=root.querySelector('[data-config-pane=datos]');
     const box=document.createElement('div');box.className='oc-config-note';
-    box.innerHTML='<button type="button" id="oc-download-contract" class="oc-primary oc-small-primary">Descargar contrato PDF</button> <a id="oc-ready-contract" hidden class="oc-text-button">Descargar contrato preparado</a><p class="oc-config-help">El PDF usa la ficha guardada, el menú, mobiliario, total y apartado registrados. Guarda los cambios antes de descargarlo. Incluye condiciones para revisar y completar antes de firmar.</p><button type="button" id="oc-mark-completed" class="oc-text-button">Confirmar evento realizado</button><p class="oc-config-help">Confirma sólo los eventos ya trabajados para incluir su pago en los sobres de esta semana.</p>';
+    box.innerHTML='<button type="button" id="oc-download-contract" class="oc-primary oc-small-primary">Descargar contrato PDF</button> <a id="oc-ready-contract" hidden class="oc-text-button">Descargar contrato preparado</a><p class="oc-config-help">El PDF usa la ficha guardada, el menú, mobiliario, total y apartado registrados. Guarda los cambios antes de descargarlo. Incluye condiciones para revisar y completar antes de firmar.</p><button type="button" id="oc-mark-completed" class="oc-text-button">Confirmar evento realizado</button><p class="oc-config-help">Confirma la realización cuando termine el evento. Los sobres pueden prepararse antes con los turnos programados.</p>';
     pane.append(box);box.querySelector('#oc-download-contract').addEventListener('click',()=>command('contract',{eventId:currentEvent.id}));
     box.querySelector('#oc-mark-completed').addEventListener('click',()=>{currentEvent.completed=true;commit('Confirmar evento realizado');});renderStaff();
   }
@@ -555,7 +553,7 @@ const root=parentElement.querySelector('#calderon-design');
       const jobs=[],future=[],thisWeek=[];
       assignments.filter(a=>String(a.personId)===String(person.id)).forEach(a=>{
         const event=eventById(a.eventId),balance=a.payCents-staffPaid(a.id);
-        if(event.startDate>=week.start&&event.startDate<week.next){thisWeek.push(event);if(event.completed&&balance>0)jobs.push({assignment:a,event,balance});}
+        if(event.startDate>=week.start&&event.startDate<week.next){thisWeek.push(event);if(balance>0)jobs.push({assignment:a,event,balance});}
         if(!event.completed&&event.startDate>=week.next&&event.startDate<week.end)future.push(event);
       });
       future.sort((a,b)=>(a.startDate+'T'+a.startTime).localeCompare(b.startDate+'T'+b.startTime));
@@ -565,11 +563,11 @@ const root=parentElement.querySelector('#calderon-design');
   }
   function renderWeeklyPlans(){
     const host=root.querySelector('#oc-weekly-plans');host.replaceChildren();const week=weekDates();
-    const upcoming=states.flatMap(s=>s.events).filter(e=>e.startDate>=week.next&&e.startDate<week.end&&!e.completed).sort((a,b)=>(a.startDate+a.startTime).localeCompare(b.startDate+b.startTime));
-    if(!upcoming.length){host.textContent='No hay eventos agendados para la próxima semana.';return;}
-    const help=document.createElement('p');help.className='oc-config-help';help.textContent='Indica cuántas personas necesitas de cada rol y su paga por turno. Al entrar a Sobres se completan automáticamente los planes guardados, sin duplicar turnos. Si falta personal, se conserva todo sin cambios.';host.append(help);
+    const upcoming=states.flatMap(s=>s.events).filter(e=>e.startDate>=week.start&&e.startDate<week.end&&!e.completed).sort((a,b)=>(a.startDate+a.startTime).localeCompare(b.startDate+b.startTime));
+    if(!upcoming.length){host.textContent='No hay eventos pendientes de esta semana ni de la siguiente.';return;}
+    const help=document.createElement('p');help.className='oc-config-help';help.textContent='Indica cuántas personas necesitas de cada rol y su paga por turno. Guarda las necesidades y pulsa Preparar sobres de esta semana el día que decidan; abrir esta sección no hace asignaciones. Si falta personal, se conserva todo sin cambios.';host.append(help);
     upcoming.forEach(event=>{
-      const details=document.createElement('details');const title=document.createElement('summary');title.textContent=event.name+' · '+states[event.casinoId-1].name+' · '+dateLabel(event.startDate)+(event.staffing?.length?'':' · Falta definir equipo');details.append(title);
+      const details=document.createElement('details');const title=document.createElement('summary');title.textContent=(event.startDate<week.next?'Esta semana · ':'Próxima semana · ')+event.name+' · '+states[event.casinoId-1].name+' · '+dateLabel(event.startDate)+(event.staffing?.length?'':' · Falta definir equipo');details.append(title);
       const form=document.createElement('form');form.className='oc-booking';
       form.innerHTML=personnelRoles.map((role,i)=>{const need=event.staffing?.find(n=>n.role===role);const existing=assignments.filter(a=>String(a.eventId)===String(event.id)&&(a.role||personnel.find(p=>String(p.id)===String(a.personId))?.role)===role);return '<div class="oc-plan-row"><strong>'+safe(role)+'</strong><label>Personas<input type="number" min="0" max="100" name="count'+i+'" value="'+(need?.count??existing.length)+'" required></label><label>Pago por turno (MXN)<input type="number" min="0" step="0.01" name="pay'+i+'" value="'+((need?.payCents??existing[0]?.payCents??50000)/100).toFixed(2)+'" required></label></div>';}).join('')+'<button class="oc-primary oc-small-primary" type="submit">Guardar necesidades de este evento</button><p role="alert"></p>';
       form.addEventListener('submit',e=>{e.preventDefault();try{const plan=personnelRoles.map((role,i)=>{const count=Number(form.elements['count'+i].value);if(!Number.isInteger(count)||count<0||count>100)throw new Error('Cantidad inválida.');return {role,count,payCents:toCents(form.elements['pay'+i].value)};});event.staffing=plan;commit('Guardar necesidades de personal');}catch(err){form.querySelector('p').textContent=err.message;}});
@@ -580,12 +578,12 @@ const root=parentElement.querySelector('#calderon-design');
     const week=weekDates();root.querySelector('#oc-week-range').textContent='Trabajo de esta semana: '+dateLabel(week.start)+' a '+dateLabel(isoDate(Number(week.next.slice(0,4)),Number(week.next.slice(5,7))-1,Number(week.next.slice(8,10))-1))+'. Próximos eventos: semana del '+dateLabel(week.next)+'.';
     const host=root.querySelector('#oc-casino-envelopes');
     const opened=new Set([...host.querySelectorAll('details[data-envelope-casino][open]')].map(d=>d.dataset.envelopeCasino));const first=!host.children.length;host.replaceChildren();
-    const envelopes=envelopeRows().filter(e=>e.amount>0&&e.deliveryEvent);
+    const envelopes=envelopeRows().filter(e=>e.deliveryEvent);
     states.forEach(state=>{
       const group=envelopes.filter(e=>e.deliveryCasinoId===state.id);const weekEvents=state.events.filter(e=>e.startDate>=week.start&&e.startDate<week.next);const subtotal=group.reduce((sum,e)=>sum+e.amount,0);
       const section=document.createElement('details');section.className='oc-casino-envelopes';section.dataset.envelopeCasino=String(state.id);section.open=opened.has(String(state.id))||(first&&group.length>0);
       const summary=document.createElement('summary');const name=document.createElement('strong');name.textContent=state.name;const count=document.createElement('span');count.textContent=group.length+' '+(group.length===1?'sobre':'sobres')+' · '+currency(subtotal);summary.append(name,count);section.append(summary);
-      if(!group.length){const empty=document.createElement('p');empty.className='oc-casino-envelope-empty';empty.textContent=weekEvents.length?'No hay sobres con dinero pendiente por entregar en este casino.':'No hubo eventos esta semana en este casino.';section.append(empty);}
+      if(!group.length){const empty=document.createElement('p');empty.className='oc-casino-envelope-empty';empty.textContent=weekEvents.length?'No hay personal asignado para recibir sobres en este casino.':'No hay eventos esta semana en este casino.';section.append(empty);}
       else{
         const handoff=document.createElement('p');handoff.className='oc-casino-envelope-help';handoff.textContent='Preparar estos sobres para los maestros de ceremonias de '+state.name+'. Ellos los entregan a cada empleado al finalizar su último turno de la semana.';section.append(handoff);
         const table=document.createElement('table');table.className='oc-envelopes-table';table.innerHTML='<caption class="oc-visually-hidden">Sobres para entregar en '+safe(state.name)+'</caption><thead><tr><th scope="col">Nombre del empleado</th><th scope="col">Próximos eventos · escribir en el sobre</th><th scope="col">Dinero por entregar</th></tr></thead>';
@@ -598,15 +596,18 @@ const root=parentElement.querySelector('#calderon-design');
           const mc=document.createElement('span');mc.className='oc-envelope-date';mc.textContent=masters.length?'Entregar al maestro: '+masters.join(', '):'Maestro de ceremonias por asignar';name.append(mc);
           const future=document.createElement('td');future.dataset.label='Próximos eventos';
           e.future.forEach(n=>{const item=document.createElement('div');item.className='oc-envelope-next';const b=document.createElement('button');b.className='oc-envelope-event';b.type='button';b.textContent=n.name;b.addEventListener('click',()=>openEvent(states.find(s=>s.id===n.casinoId),n));const when=document.createElement('span');when.className='oc-envelope-date';when.textContent=dateLabel(n.startDate)+' · '+hourLabel(n.startTime)+' — '+hourLabel(n.endTime)+(n.endDate!==n.startDate?' (+1 día)':'')+' · '+states[n.casinoId-1].name;item.append(b,when);future.append(item);});
-          if(!e.future.length)future.textContent='Sin evento asignado la próxima semana';
+          if(!e.future.length){future.textContent='';future.setAttribute('aria-label','Sin próximos eventos; dejar el sobre sólo con el nombre');}
           const amount=document.createElement('td');amount.dataset.label='Dinero por entregar';amount.className='oc-envelope-money';const value=document.createElement('strong');value.textContent=currency(e.amount);amount.append(value);
-          const breakdown=document.createElement('details');breakdown.className='oc-envelope-breakdown';const label=document.createElement('summary');label.textContent='Ver turnos pendientes';breakdown.append(label);e.jobs.forEach(j=>{const line=document.createElement('p');line.textContent=dateLabel(j.event.startDate)+' · '+states[j.event.casinoId-1].name+' · '+j.event.name+': '+currency(j.balance);breakdown.append(line);});amount.append(breakdown);
-          const pay=document.createElement('button');pay.type='button';pay.className='oc-text-button oc-register-envelope-payment';pay.textContent='Registrar pago al empleado';pay.addEventListener('click',()=>showStaffPayment(e,amount));amount.append(pay);tr.append(name,future,amount);body.append(tr);
+          const breakdown=document.createElement('details');breakdown.className='oc-envelope-breakdown';const label=document.createElement('summary');label.textContent='Ver turnos de esta semana';breakdown.append(label);e.jobs.forEach(j=>{const line=document.createElement('p');line.textContent=dateLabel(j.event.startDate)+' · '+states[j.event.casinoId-1].name+' · '+j.event.name+': '+currency(j.balance);breakdown.append(line);});amount.append(breakdown);
+          const pay=document.createElement('button');pay.type='button';pay.className='oc-text-button oc-register-envelope-payment';pay.textContent=e.jobs.length?'Registrar pago al empleado':'Pagos cubiertos';pay.disabled=!e.jobs.length;pay.addEventListener('click',()=>showStaffPayment(e,amount));amount.append(pay);tr.append(name,future,amount);body.append(tr);
         });table.append(body);section.append(table);
       }host.append(section);
     });
     root.querySelector('#oc-envelopes-demo').hidden=true;root.querySelector('#oc-envelopes-count').textContent=envelopes.length+' sobres por preparar';root.querySelector('#oc-envelopes-total').textContent='Dinero pendiente de esta semana: '+currency(envelopes.reduce((sum,e)=>sum+e.amount,0));root.querySelector('#oc-envelopes-empty').hidden=envelopes.length>0;
-    root.querySelector('#oc-envelopes-note').textContent='Un sobre por empleado, en el casino de su último turno de esta semana, aunque trabaje en varios salones. El monto suma los turnos ya realizados de esta semana menos anticipos y pagos; los turnos todavía no trabajados no se incluyen. Confirma cada evento y actualiza antes de entregar. Pasar el sobre al maestro no registra un pago: regístralo cuando el empleado reciba el dinero.';
+    root.querySelector('#oc-envelopes-note').textContent='Pulsa Preparar sobres de esta semana el martes, jueves o cualquier día que decidan. El monto es el total previsto por TODOS sus turnos programados de lunes a domingo, menos anticipos y pagos. Actualiza si cambian los eventos. Un sobre por persona, en el casino de su último turno. Si no trabaja la siguiente semana, escribe sólo su nombre. Preparar o pasar sobres al maestro no registra pagos; regístralos al entregar el dinero al empleado.';
+    const notices=root.querySelector('#oc-notify-list');notices.replaceChildren();const toNotify=envelopeRows().filter(e=>!e.deliveryEvent&&e.future.length);root.querySelector('#oc-notify-panel').querySelector('summary').textContent='Personal por avisar · '+toNotify.length+' personas';
+    if(!toNotify.length){notices.textContent='No hay personal adicional por avisar.';}
+    else{const help=document.createElement('p');help.className='oc-config-help';help.textContent='Omar: estas personas no trabajan esta semana y no recibirán sobre. Avísales por mensaje sus turnos de la próxima semana.';notices.append(help);toNotify.forEach(e=>{const row=document.createElement('div');row.className='oc-payment-row';const name=document.createElement('strong');name.textContent=e.person.name;row.append(name);e.future.forEach(n=>{const when=document.createElement('p');when.textContent=n.name+' · '+dateLabel(n.startDate)+' · '+hourLabel(n.startTime)+' — '+hourLabel(n.endTime)+(n.endDate!==n.startDate?' (+1 día)':'')+' · '+states[n.casinoId-1].name;row.append(when);});notices.append(row);});}
     renderWeeklyPlans();renderOlderBalances();
   }
   function renderOlderBalances(){
@@ -625,7 +626,7 @@ const root=parentElement.querySelector('#calderon-design');
   }
 
   root.querySelector('#oc-export-labels').addEventListener('click',()=>command('pdf'));
-  root.querySelector('#oc-prepare-week').addEventListener('click',()=>command('prepare_week'));
+  root.querySelector('#oc-prepare-week').addEventListener('click',()=>command('prepare_envelopes'));
   hydrate(data.snapshot);states.forEach(renderMonth);renderPersonnel();
   openPage('inicio');
 

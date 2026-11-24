@@ -17,9 +17,11 @@ NOVEDADES
 - Edición y eliminación del personal con conservación de su historial.
 
 PRIMER USO DE SOBRES
-En Equipo necesario para la próxima semana define personas por rol y
-paga del turno de cada evento. Guarda y el acomodo se hace solo.
-Confirma los eventos realizados para sumar sólo trabajo ya efectuado.
+En Equipo necesario de esta semana y la siguiente define personas
+por rol y paga del turno. Guarda y pulsa Preparar sobres de esta semana
+el día que decidan. Incluye todos los turnos programados de esta semana,
+aunque aún no hayan ocurrido. Preparar no marca pagos como entregados.
+Personal por avisar muestra quién sólo trabaja la siguiente semana.
 El monto del sobre no incluye trabajo de la próxima semana.
 Actualiza el sobre antes de entregarlo al terminar el último turno.
 
