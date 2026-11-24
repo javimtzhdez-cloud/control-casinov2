@@ -76,10 +76,11 @@ except Exception:
     st.error('La base no está disponible. Recarga cuando se restablezca; no se borraron registros.');st.stop()
 
 @st.cache_resource
-def ui_component():
-    return st.components.v2.component('calderon_v2',html=(ROOT/'ui.html').read_text(),css=(ROOT/'ui.css').read_text(),js=(ROOT/'ui.js').read_text(),isolate_styles=True)
+def ui_component(ui_version):
+    return st.components.v2.component('calderon_v2_'+ui_version[:12],html=(ROOT/'ui.html').read_text(),css=(ROOT/'ui.css').read_text(),js=(ROOT/'ui.js').read_text(),isolate_styles=True)
 
-result=ui_component()(key='calderon-ui-'+mode+'-'+actor+'-'+str(st.session_state.get('ui_epoch',0)),data={'snapshot':snapshot,'revision':revision,'today':str(today()),'now':datetime.now(ZoneInfo('America/Mexico_City')).strftime('%Y-%m-%dT%H:%M:%S'),'mode':mode,'reply':st.session_state.get('reply')},on_command_change=lambda:None,height='content')
+ui_version=hashlib.sha256(b'\0'.join((ROOT/name).read_bytes() for name in ['ui.html','ui.css','ui.js'])).hexdigest()
+result=ui_component(ui_version)(key='calderon-ui-'+mode+'-'+actor+'-'+str(st.session_state.get('ui_epoch',0)),data={'snapshot':snapshot,'revision':revision,'today':str(today()),'now':datetime.now(ZoneInfo('America/Mexico_City')).strftime('%Y-%m-%dT%H:%M:%S'),'mode':mode,'reply':st.session_state.get('reply')},on_command_change=lambda:None,height='content')
 command=result.command
 if command and command.get('id')!=st.session_state.get('last_request'):
     request_id=command.get('id','');reply={'id':request_id,'ok':False}
@@ -98,7 +99,7 @@ if command and command.get('id')!=st.session_state.get('last_request'):
         elif kind in ['prepare_week','prepare_envelopes']:
             current,current_rev=store.read()
             if base!=current_rev: raise Conflict('Otra persona actualizó los datos. Pulsa Actualizar y vuelve a entrar a Sobres.')
-            changed=prepare_envelopes(current) if kind=='prepare_envelopes' else prepare_week(current)
+            changed=prepare_envelopes(current)
             if changed!=current: snapshot,revision=store.save(changed,base,request_id,actor)
             missing=[e for e in changed['events'] if str(week_window()[0] if kind=='prepare_envelopes' else week_window()[1])<=e['startDate']<str(week_window()[2]) and not e['completed'] and not e.get('staffing')]
             reply.update(ok=True,message=('Sobres de esta semana preparados. Próximos turnos actualizados.' if kind=='prepare_envelopes' else 'Asignación semanal actualizada.')+(' Hay eventos sin necesidades de personal: configúralas en Equipo necesario.' if missing else ''))

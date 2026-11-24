@@ -65,6 +65,17 @@ def pricing(details):
     extra=(1500 if any(m in PREMIUM for m in meat) else 0)+(1000 if details.get('extraGuarnicion') else 0)
     return {'count':count,'unit':unit,'base':integer(count*unit),'extraUnit':extra,'extra':integer(count*extra),'total':integer(count*(unit+extra))}
 
+FIXED_STAFF={'Baños':1,'Barra':2,'Maestro de ceremonias':1,'Poli':1,'Puerta':1,'Cocina':2}
+
+def staffing_requirements(personas):
+    guests=integer(personas,1,10000)
+    tables=(guests+9)//10
+    return {'tables':tables,'preferredWaiters':max(1,guests//20,(tables+2)//3),'minimumWaiters':(tables+2)//3,**FIXED_STAFF}
+
+class InsufficientStaff(ValueError):
+    def __init__(self,role,event_id,message):
+        super().__init__(message);self.role=role;self.event_id=str(event_id)
+
 def empty_state(): return {'version':2,'personnel':[],'events':[],'assignments':[],'staffPayments':[]}
 
 def validate(raw, now=None):
@@ -129,7 +140,7 @@ def validate(raw, now=None):
         for need in plan:
             role=need.get('role')
             if role not in ROLES or role in roles: raise ValueError('Rol duplicado o inválido en el plan.')
-            roles.add(role);staffing.append({'role':role,'count':integer(need.get('count'),0,100),'payCents':integer(need.get('payCents'),0)})
+            roles.add(role);staffing.append({'role':role,'count':integer(need.get('count'),0,1000),'payCents':integer(need.get('payCents'),0)})
         out['events'].append({'id':eid,'casinoId':casino,'name':name,'type':text(e.get('type','Evento'),80),
             'startDate':day,'startTime':start,'endDate':end_day,'endTime':end_time,'details':d,
             'totalCents':total,'payments':payments,'completed':completed,'staffing':staffing})
@@ -164,7 +175,7 @@ def validate(raw, now=None):
     return out
 
 def assign_auto(snapshot,event_id,role,count,pay):
-    data=deepcopy(snapshot);count=integer(count,1,100);pay=integer(pay)
+    data=deepcopy(snapshot);count=integer(count,1,1000);pay=integer(pay)
     event=next((e for e in data['events'] if str(e['id'])==str(event_id)),None)
     if not event or event.get('completed'): raise ValueError('Selecciona un evento programado.')
     if role not in ROLES: raise ValueError('Rol inválido.')
@@ -181,7 +192,7 @@ def assign_auto(snapshot,event_id,role,count,pay):
         shift=event_map[str(a['eventId'])]
         if begin<datetime.fromisoformat(shift['endDate']+'T'+shift['endTime']) and end>datetime.fromisoformat(shift['startDate']+'T'+shift['startTime']): busy.add(str(a['personId']))
     available=sorted([p for p in data['personnel'] if p.get('active',True) and p['role']==role and str(p['id']) not in busy],key=rank)
-    if len(available)<count: raise ValueError(f'Faltan {count-len(available)} personas disponibles para {role}. No se asignó nadie.')
+    if len(available)<count: raise InsufficientStaff(role,event_id,f'Faltan {count-len(available)} personas disponibles para {role}. No se asignó nadie.')
     for p in available[:count]: data['assignments'].append({'id':uid(),'personId':str(p['id']),'eventId':str(event_id),'payCents':pay,'role':role})
     return validate(data)
 
@@ -218,9 +229,67 @@ def prepare_week(snapshot,reference=None,week_offset=1):
     return validate(data)
 
 def prepare_envelopes(snapshot,reference=None):
-    # Ambos acomodos se guardan en una sola transacción por el llamador.
-    current=prepare_week(snapshot,reference,week_offset=0)
-    return prepare_week(current,reference)
+    """Exige puestos mínimos y reparte meseros sin exceder tres mesas por persona."""
+    original=validate(snapshot);start,_,end=week_window(reference)
+    targets=[e for e in original['events'] if str(start)<=e['startDate']<str(end) and not e['completed']]
+    people={str(p['id']):p for p in original['personnel']}
+    requirements={};plans={}
+    for event in targets:
+        if not event.get('details',{}).get('personas'):
+            raise ValueError(f"{event['name']}: captura el número de personas antes de preparar los sobres. No se guardó ningún cambio semanal.")
+        req=staffing_requirements(event['details']['personas']);requirements[event['id']]=req
+        old={n['role']:n for n in event.get('staffing',[])}
+        shifts=[a for a in original['assignments'] if str(a['eventId'])==str(event['id'])]
+        plan=[]
+        for role in ROLES:
+            default_pay=next((a['payCents'] for a in shifts if a.get('role',people[str(a['personId'])]['role'])==role),50000)
+            need=old.get(role,{})
+            count=req['preferredWaiters'] if role=='Mesero' else max(FIXED_STAFF.get(role,0),need.get('count',sum(a.get('role',people[str(a['personId'])]['role'])==role for a in shifts)))
+            plan.append({'role':role,'count':count,'payCents':need.get('payCents',default_pay)})
+        plans[event['id']]=plan
+    reduced=set();trimmed=set()
+    # Primero se intenta el servicio normal. Si falta personal, se reduce sólo
+    # la fecha afectada. Se reservan los mínimos de todos sus eventos.
+    for _ in range(2*len(targets)+1):
+        data=deepcopy(original)
+        for event in data['events']:
+            if event['id'] not in plans: continue
+            event['staffing']=deepcopy(plans[event['id']])
+            if event['startDate'] in reduced:
+                existing=sum(str(a['eventId'])==str(event['id']) and a.get('role',people[str(a['personId'])]['role'])=='Mesero' for a in original['assignments'])
+                req=requirements[event['id']]
+                count=req['minimumWaiters'] if event['startDate'] in trimmed else max(req['minimumWaiters'],min(existing,req['preferredWaiters']))
+                next(n for n in event['staffing'] if n['role']=='Mesero')['count']=count
+        try:
+            data=prepare_week(data,reference,week_offset=0)
+            data=prepare_week(data,reference)
+            break
+        except ValueError as error:
+            cause=error
+            while cause.__cause__ is not None: cause=cause.__cause__
+            if not isinstance(cause,InsufficientStaff) or cause.role!='Mesero': raise
+            event=next(e for e in targets if str(e['id'])==cause.event_id)
+            day=event['startDate']
+            if day not in reduced: reduced.add(day)
+            elif day not in trimmed: trimmed.add(day)
+            else: raise ValueError(str(error)+' No hay suficientes meseros ni atendiendo hasta 3 mesas por persona.') from error
+    else: raise ValueError('No se pudo completar el equipo sin exceder tres mesas por mesero.')
+    # Si hay algún mesero libre tras cubrir los mínimos de todos los eventos,
+    # se agrega de forma gradual para acercarse al reparto de dos mesas.
+    candidates=sorted([e for e in targets if e['startDate'] in reduced],key=lambda e:(e['startDate'],e['startTime'],e['casinoId']))
+    changed=True
+    while changed:
+        changed=False
+        for event in candidates:
+            current=next(e for e in data['events'] if e['id']==event['id'])
+            need=next(n for n in current['staffing'] if n['role']=='Mesero')
+            if need['count']>=requirements[event['id']]['preferredWaiters']: continue
+            try: extra=assign_auto(data,event['id'],'Mesero',1,need['payCents'])
+            except InsufficientStaff: continue
+            data=extra
+            next(n for e in data['events'] if e['id']==event['id'] for n in e['staffing'] if n['role']=='Mesero')['count']+=1
+            changed=True
+    return validate(data)
 
 def weekly_notices(data,reference=None):
     return [row for row in envelopes(data,reference) if row['deliveryEvent'] is None and row['upcoming']]

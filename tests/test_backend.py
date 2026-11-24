@@ -216,15 +216,17 @@ def test_prepare_button_on_tuesday_projects_weekend_and_compares_next_week():
     s=empty_state();s['personnel']=[dict(id='ana',name='Ana',role='Mesero',casino='Esmeralda'),dict(id='beto',name='Beto',role='DJ',casino='Sophia')]
     for day,role,cid in [('2026-11-20','Mesero',1),('2026-11-21','Mesero',1),('2026-11-27','Mesero',1),('2026-11-28','DJ',2)]:
         e=event_on(day,casino=cid);e['staffing']=[dict(role=role,count=1,payCents=50000)];s['events'].append(e)
+    for e in s['events']:e['details']['personas']='20'
+    add_fixed_team(s)
     before=deepcopy(s);prepared=prepare_envelopes(s,'2026-11-17')
-    assert s==before and len(prepared['assignments'])==4
+    assert s==before and len(prepared['assignments'])==37
     assert prepared['staffPayments']==[] and not any(e['completed'] for e in prepared['events'])
     ana=next(r for r in envelopes(prepared,'2026-11-17') if r['person']['id']=='ana')
-    assert ana['amount']==100000 and len(ana['jobs'])==2 and len(ana['upcoming'])==1
+    assert ana['amount']==100000 and len(ana['jobs'])==2 and len(ana['upcoming'])==2
     assert ana['deliveryEvent']['startDate']=='2026-11-21'
     assert [r['person']['id'] for r in weekly_notices(prepared,'2026-11-17')]==['beto']
     assert prepare_envelopes(prepared,'2026-11-17')==prepared
-    assert sum(len(g['envelopes']) for g in envelope_groups(prepared,'2026-11-17'))==1
+    assert sum(len(g['envelopes']) for g in envelope_groups(prepared,'2026-11-17'))==9
 
 
 def test_prepare_button_keeps_name_only_when_no_next_week_work():
@@ -245,7 +247,79 @@ def test_rotation_ignores_history_older_than_two_weeks():
 def test_preparing_current_and_next_week_is_atomic_when_next_week_fails():
     s=empty_state();s['personnel']=[dict(id='ana',name='Ana',role='Mesero',casino='Esmeralda')]
     for day,role in [('2026-11-20','Mesero'),('2026-11-27','DJ')]:
-        e=event_on(day);e['staffing']=[dict(role=role,count=1,payCents=50000)];s['events'].append(e)
+        e=event_on(day);e['details']['personas']='20';e['staffing']=[dict(role=role,count=1,payCents=50000)];s['events'].append(e)
+    add_fixed_team(s)
     before=deepcopy(s)
-    with pytest.raises(ValueError):prepare_envelopes(s,'2026-11-17')
+    with pytest.raises(ValueError,match='DJ'):prepare_envelopes(s,'2026-11-17')
     assert s==before
+
+
+def add_fixed_team(state,multiplier=1):
+    for role,count in FIXED_STAFF.items():
+        for i in range(count*multiplier):
+            state['personnel'].append(dict(id=uid(),name=f'{role} {i}',role=role,casino='Esmeralda'))
+
+
+@pytest.mark.parametrize('guests,tables,normal,minimum',[(10,1,1,1),(19,2,1,1),(30,3,1,1),(39,4,2,2),(45,5,2,2),(55,6,2,2),(60,6,3,2),(70,7,3,3),(75,8,3,3),(80,8,4,3),(100,10,5,4)])
+def test_waiters_usually_two_tables_with_an_odd_table_and_cap_three(guests,tables,normal,minimum):
+    req=staffing_requirements(guests)
+    assert (req['tables'],req['preferredWaiters'],req['minimumWaiters'])==(tables,normal,minimum)
+    assert req['Baños']==1 and req['Barra']==2 and req['Cocina']==2
+    assert req['Maestro de ceremonias']==req['Poli']==req['Puerta']==1
+
+
+def staff_scenario(guests,waiters,casinos=1):
+    s=empty_state();add_fixed_team(s,casinos)
+    for i in range(waiters):s['personnel'].append(dict(id=uid(),name=f'Mesero {i}',role='Mesero',casino=CASINOS[i%4]))
+    for cid in range(1,casinos+1):
+        e=event_on('2026-11-27',casino=cid);e['details']['personas']=str(guests)
+        # A plan with zero staff must never bypass mandatory counts.
+        e['staffing']=[dict(role=r,count=0,payCents=60000) for r in ROLES];s['events'].append(e)
+    return s
+
+
+def test_required_positions_override_a_plan_with_zero_staff():
+    s=staff_scenario(45,2);out=prepare_envelopes(s,'2026-11-17')
+    counts={r:sum(a['role']==r for a in out['assignments']) for r in ROLES}
+    assert counts=={'Mesero':2,'Maestro de ceremonias':1,'DJ':0,'Cocina':2,'Baños':1,'Poli':1,'Puerta':1,'Barra':2}
+    assert all(a['payCents']==60000 for a in out['assignments'])
+    assert prepare_envelopes(out,'2026-11-17')==out
+
+
+def test_waiter_shortage_falls_back_to_three_tables_per_person():
+    s=staff_scenario(60,2);out=prepare_envelopes(s,'2026-11-17')
+    assert sum(a['role']=='Mesero' for a in out['assignments'])==2
+    assert next(n for n in out['events'][0]['staffing'] if n['role']=='Mesero')['count']==2
+    assert prepare_envelopes(out,'2026-11-17')==out
+
+
+def test_shortage_does_not_exceed_three_tables_or_save_partial_work():
+    s=staff_scenario(45,1);before=deepcopy(s)
+    with pytest.raises(ValueError,match='3 mesas'):prepare_envelopes(s,'2026-11-17')
+    assert s==before
+
+
+def test_reduces_a_day_to_cover_both_casinos_before_adding_extra_waiters():
+    s=staff_scenario(60,4,casinos=2);out=prepare_envelopes(s,'2026-11-17')
+    for event in out['events']:
+        assert sum(a['role']=='Mesero' and a['eventId']==event['id'] for a in out['assignments'])==2
+    assert prepare_envelopes(out,'2026-11-17')==out
+
+
+def test_allocates_remaining_waiters_without_stealing_another_casinos_minimum():
+    s=staff_scenario(60,7,casinos=3);out=prepare_envelopes(s,'2026-11-17')
+    counts=[sum(a['role']=='Mesero' and a['eventId']==e['id'] for a in out['assignments']) for e in out['events']]
+    assert sorted(counts)==[2,2,3]
+    assert prepare_envelopes(out,'2026-11-17')==out
+
+
+def test_missing_fixed_role_never_uses_waiter_fallback_to_ignore_it():
+    s=staff_scenario(60,3);s['personnel']=[p for p in s['personnel'] if p['role']!='Baños']
+    before=deepcopy(s)
+    with pytest.raises(ValueError,match='Baños'):prepare_envelopes(s,'2026-11-17')
+    assert s==before
+
+
+def test_event_requires_guest_count_before_automatic_staffing():
+    s=staff_scenario(45,2);s['events'][0]['details']={}
+    with pytest.raises(ValueError,match='número de personas'):prepare_envelopes(s,'2026-11-17')
